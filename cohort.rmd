@@ -1,0 +1,85 @@
+---
+title: "Cohort characteristics"
+output: html_notebook
+---
+
+```{r}
+library(mbtools)
+theme_set(theme_minimal())
+```
+
+```{r}
+classes <- c(public_client_id = "character", vendor_observation_id = "character")
+cohort <- fread("data/manifest.csv", colClasses = classes)[has_close_microbiome == T]
+cohort[, "public_client_id" := paste0("0", public_client_id)]
+```
+
+```{r}
+library(arivale.data.interface)
+chem <- get_snapshot("chemistries", clean=T)
+chem <- chem[cohort, on=c("public_client_id", "days_in_program"), roll="nearest"]
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(cohort, aes(x=subset, y=bmi, color=subset)) + 
+    geom_jitter(width=0.2) +
+    labs(x="", y=expression(paste("BMI [", kg/m^2, "]"))) +
+    guides(color=F)
+ggsave("figures/bmi.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(cohort, aes(x=subset, y=age, color=subset)) + 
+    geom_jitter(width=0.2) +
+    labs(x="", y="age [years]") +
+    guides(color=F)
+ggsave("figures/age.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(cohort, aes(x=subset, y=weight_change_relative, color=subset)) + 
+    geom_jitter(width=0.2) +
+    labs(x="", y="rel. weight change [%/month]") +
+    guides(color=F)
+ggsave("figures/weight_change.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(chem, aes(x=subset, y=ADIPONECTIN__SERUM, color=subset)) + 
+    geom_jitter(width=0.2) +
+    labs(x="", y="serum adiponectin [mg/L]") +
+    guides(color=F)
+ggsave("figures/adiponectin.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(chem, aes(x=subset, y=HDL_CHOL_DIRECT, color=subset)) + 
+    geom_jitter(width=0.2) +
+    labs(x="", y="serum HDL [mg/L]") +
+    guides(color=F)
+ggsave("figures/hdl.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(chem, aes(x=subset, y=LDL_CHOL_CALCULATION, color=subset)) + 
+    geom_jitter(width=0.2) +
+    labs(x="", y="serum LDL [mg/L]") +
+    guides(color=F)
+ggsave("figures/ldl.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(chem, aes(x=subset, y=GLUCOSE, color=subset)) + 
+    geom_jitter(width=0.2) +
+    labs(x="", y="serum glucose [mg/L]") +
+    guides(color=F)
+ggsave("figures/glucose.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(chem, aes(x=subset, y=HOMA_IR, color=subset)) + 
+    geom_jitter(width=0.2) +
+    labs(x="", y="HOMA IR [index]") +
+    guides(color=F)
+ggsave("figures/homa_ir.svg", width=2, height=3)
+```

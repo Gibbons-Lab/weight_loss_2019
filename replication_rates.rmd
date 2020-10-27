@@ -1,0 +1,46 @@
+---
+title: "Replication rates"
+output: html_notebook
+---
+
+# Replication rates
+
+```{r}
+library(mbtools)
+
+rates <- fread("data/rates.csv")
+manifest <- fread("data/manifest.csv")
+rates <- rates[manifest, on = c(id = "vendor_observation_id"), allow.cartesian = T]
+head(rates)
+```
+
+```{r, fig.width=2.5, fig.height=4}
+theme_set(theme_minimal())
+
+ggplot(rates, aes(x = subset, y = rate, color = subset)) + 
+    scale_y_log10() +
+    geom_jitter(width=0.2, alpha=0.5, size = 1) +
+    labs(x = "", y = "replication rate [a.u.]") + guides(color = F)
+ggsave("figures/replication.png", width=2.5, height=4, dpi=300)
+```
+
+```{r}
+glm(log(rate) ~ age + bmi + subset, data=rates) %>% summary()
+```
+
+```{r}
+library(arivale.data.interface)
+
+
+gastro <- get_snapshot("assessments_digestive_health", clean=T)
+gastro[, public_client_id := as.integer(public_client_id)]
+merged <- gastro[, .(public_client_id, assessment_digestion_bowel_movements_enum)][rates, on="public_client_id"]
+merged[, "bowel_movement" := assessment_digestion_bowel_movements_enum]
+```
+
+```{r}
+ggplot(merged, aes(x=bowel_movement, y=rate)) + 
+    geom_jitter(width=0.2) + scale_y_log10()
+
+glm(factor(subset) ~ bowel_movement + sex + age, data=unique(merged[, .(subset, bowel_movement, sex, age)]), family="binomial") %>% summary()
+```

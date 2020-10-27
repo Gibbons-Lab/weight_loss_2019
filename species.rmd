@@ -1,0 +1,90 @@
+---
+title: "Species abundances"
+output: html_notebook
+---
+
+
+```{r}
+library(mbtools)
+theme_set(theme_minimal())
+```
+
+```{r}
+classes <- c(public_client_id = "character", vendor_observation_id = "character")
+cohort <- fread("data/manifest.csv", colClasses = classes)[has_close_microbiome == T]
+```
+
+Let's rad the data and format it to a phyloseq object.
+
+```{r}
+species <- fread("data/S_counts.csv", colClasses = c(sample = "character"))
+map <- c(d = "domain", p = "phylum", o = "order", c = "class", f = "family", g = "genus", s = "species")
+names(species)[1:7] <- map[names(species)[1:7]]
+abundance <- dcast(species, sample ~ species, value.var = "reads", fun.aggregate = sum)
+samples <- abundance[, sample]
+abundance <- as.matrix(abundance[, "sample" := NULL])
+rownames(abundance) <- samples
+
+taxa <- as.matrix(unique(species[, map, with = F]))
+rownames(taxa) <- taxa[, "species"]
+
+sdata <- as.data.frame(cohort)
+rownames(sdata) <- sdata$vendor_observation_id
+sdata <- sdata[rownames(abundance), ]
+sdata$subset <- factor(sdata$subset)
+sdata$sex <- factor(sdata$sex)
+
+ps <- phyloseq(
+    otu_table(abundance, taxa_are_rows = F),
+    tax_table(taxa),
+    sample_data(sdata)
+)
+```
+
+
+```{r}
+ps <- ps %>% subset_taxa(species != "" & domain == "Bacteria")
+rank <- "species"
+
+tests <- association(
+    ps, 
+    presence_threshold = 0.5,
+    min_abundance = 2,
+    in_samples = 0.8,
+    confounders = c("age", "bmi", "sex"),
+    variables = "subset",
+    taxa_rank = rank,
+    method = "deseq2"
+)
+bmi <- association(
+    ps, 
+    presence_threshold = 0.5,
+    min_abundance = 2,
+    in_samples = 0.8,
+    confounders = c("age", "sex"),
+    variables = "bmi",
+    taxa_rank = rank,
+    method = "deseq2"
+)
+tests <- rbind(tests, bmi)
+tests <- merge.data.table(tests, as.data.frame(as(tax_table(ps), "matrix")), on=rank)
+tests[order(padj)]
+```
+
+```{r, fig.width=5, fig.height=3}
+tests[, "t" := log2FoldChange / lfcSE]
+wide <- dcast(tests, reformulate("variable", rank), value.var=c("t", "padj"), fill=0)
+wide[, "sig" := "none"]
+wide[padj_bmi < 0.05, "sig" := "BMI"]
+wide[padj_subset < 0.05, "sig" := "weight loss"]
+wide[padj_bmi < 0.05 & padj_subset < 0.05, "sig" := "both"]
+wide[, "sig" := factor(sig, levels=c("none", "BMI", "weight loss", "both"))]
+ggplot(wide, aes(x=t_bmi, y=t_subset, color=sig)) +
+    geom_vline(xintercept = 0, color="gray30", lty="dashed") +
+    geom_hline(yintercept = 0, color="gray30", lty="dashed") +
+    geom_point() + stat_smooth(method="glm", aes(group = 1)) +
+    labs(x = "t statistic BMI", y = "t statistic weight loss") +
+    scale_color_manual(values=c(none = "black", BMI = "royalblue", `weight loss`="orange", both = "red"))
+ggsave("figures/species_t.png", dpi=300, width=5, height=3)
+cor.test(~ t_bmi + t_subset, data=wide, method="spearman")
+```

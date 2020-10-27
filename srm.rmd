@@ -1,0 +1,123 @@
+---
+title: "SRM data"
+output: html_notebook
+---
+
+```{r}
+library(data.table)
+library(magrittr)
+library(ggplot2)
+library(SummarizedExperiment)
+library(readxl)
+theme_set(theme_minimal())
+```
+
+We will start by reading the data.
+
+```{r}
+gmap <- c(control = "no weight loss", `weight loss` = "successful weight loss")
+
+srm <- read_excel("data/innovator_SRM_02122020.xlsx", sheet = "data") %>% setDT()
+prots <- read_excel("data/innovator_SRM_02122020.xlsx", sheet = "proteins") %>% setDT()
+
+srm <- melt(srm, id.vars = c("replicate_id", "public_client_id", "group"), 
+            variable.name = "id", value.name = "abundance")
+srm <- prots[srm, on = "id"]
+srm[, c("group", "state") := tstrsplit(group, "_")]
+srm[, group := gmap[group]]
+srm
+```
+
+Let;s join that with our manifest.
+
+```{r}
+manifest <- fread("data/manifest.csv")
+classes <- c(microbiome_id = "character")
+cohort <- list(
+    no_loss = fread("no_weight_loss.csv", colClasses = classes)[, "group" := "no weight loss"],
+    loss = fread("successful_weight_loss.csv", colClasses = classes)[, "group" := "successful weight loss"]
+) %>% rbindlist()
+cohort[, "state" := c("before", "after")[order(days_in_program)], by = "public_client_id"]
+cohort
+```
+
+And let's combine the two:
+
+```{r}
+merged <- cohort[srm, on = c("public_client_id", "group", "state")]
+norm <- copy(merged)
+norm[, "log_abundance" := log2(abundance)]
+norm[, "log_abundance_norm" := log_abundance - mean(log_abundance), by = c("public_client_id", "state")]
+ggplot(norm, aes(x=factor(paste(public_client_id, state)), 
+                 y=log_abundance, color=group)) + 
+    geom_jitter(width=0.2)
+```
+
+Now we can start to model the associations:
+
+```{r, fig.width = 8, fig.height = 8}
+model_stats <- function(dt, delta = FALSE) {
+    mod <- glm(log_abundance ~ group + bmi + age, data=dt)
+    if (delta) {
+        mod <- glm(delta ~ group + bmi + age, data=dt)
+    }
+    coef <- coefficients(mod)[2]
+    pval <- summary(mod)$coefficients[2, 4]
+    pval_bmi <- summary(mod)$coefficients[3, 4]
+    return(data.table(
+        id = dt$id[1],
+        # gene = dt[1, `gene name`],
+        coef_name = names(coefficients(mod))[2],
+        coef = coef,
+        pval = pval,
+        coef_bmi = coefficients(mod)[3],
+        pval_bmi = pval_bmi
+    ))
+}
+
+stats <- norm[state == "after", model_stats(.SD), by = "gene name"]
+stats[, padj := p.adjust(pval, method = "fdr")]
+stats[, padj_bmi := p.adjust(pval_bmi, method = "fdr")]
+stats[order(padj)]
+
+ggplot(norm[state == "after"], aes(x=group, y=log_abundance)) + 
+    geom_jitter(width=0.2, alpha = 0.5) + 
+    facet_wrap(~ `gene name`, scale="free_y") +
+    labs(x = "", y="Δprotein [log2(abundance)/month]") +
+    theme(axis.text.x = element_text(angle = 30, vjust = 1, hjust=1))
+```
+
+And we can look at the deltas:
+
+```{r, fig.width = 6, fig.height = 4}
+norm[, delta := (log_abundance[state == "after"] - log_abundance[state == "before"]) / span_days * 30.5, by = c("public_client_id", "id")]
+
+stats <- norm[state == "after", model_stats(.SD, delta=T), by = "gene name"]
+stats[, padj := p.adjust(pval, method = "fdr")]
+stats[, padj_bmi := p.adjust(pval_bmi, method = "fdr")]
+stats[order(pval)]
+sig <- stats[padj < 0.1, `gene name`]
+
+ggplot(norm[state == "before" & `gene name` %in% sig], aes(x=group, y=delta)) + 
+    geom_hline(yintercept = 0, lty = "dashed", color = "gray20") +
+    geom_jitter(width=0.2, alpha = 0.5) + 
+    facet_wrap(~ `gene name`, scale="free_y") +
+    stat_summary(fun.y = median, geom = "point", size = 2, stroke=1, color = "blue", fill="white", shape = 23) +
+    labs(x = "", y="Δprotein [log2 fold-change/month]") +
+    theme(axis.text.x = element_text(angle = 30, vjust = 1, hjust=1))
+ggsave("figures/deltas.png", dpi=300, width=6, height=4)
+```
+
+```{r, fig.width=3, fig.height=3.5}
+timed <- copy(norm)[, state := factor(state, levels=c("before", "after"))]
+timed[state == "before", time := 0]
+timed[state == "after", time := span_days]
+means <- timed[`gene name` == "ADIPOQ", .(log_abundance = mean(log_abundance)), by = c("state", "group", "id", "gene name")]
+ggplot(timed[`gene name` == "ADIPOQ"], 
+       aes(x=state, y=log_abundance, color = group)) + 
+    geom_point(alpha=0.25, size=0.5) + geom_line(aes(group = interaction(public_client_id, id)), alpha=0.25) +
+    geom_point(data=means) + geom_line(aes(group = id), data = means, size=1) +
+    guides(color = FALSE) + labs(x="", y="abundance [log-scale]") +
+    facet_grid(group ~ `gene name`)
+ggsave("figures/slopes.png", dpi=300, width=3, height=3.5)
+```

@@ -1,0 +1,100 @@
+---
+title: "meteome"
+output: html_notebook
+---
+
+```{r}
+devtools::load_all("~/mbtools")
+library(phyloseq)
+library(SummarizedExperiment)
+theme_set(theme_minimal())
+```
+
+# meteome analysis
+
+Let's start by loading some previously preprocessed meteome data.
+
+```{r}
+mets <- readRDS("/proj/gibbons/toadnet/data/metabolome.rds")
+mets
+```
+
+This includes data for all of Arivale so let's filter the sample we are interested in:
+
+```{r}
+manifest <- fread("data/manifest.csv")[has_close_microbiome == T]
+manifest[, public_client_id := paste0("0", as.character(public_client_id))]
+met_samples <- colData(mets) %>% as.data.table()
+matched <- met_samples[manifest, on = c("public_client_id", "days_in_program"), nomatch=0]
+sdata <- as.data.frame(matched)
+sdata$subset <- factor(sdata$subset)
+sdata$sex <- factor(sdata$sex)
+rownames(sdata) <- sdata$sample_id
+sdata$high_bmi <- factor(as.numeric(sdata$bmi > 30))
+mets <- mets[, mets$sample_id %in% matched$sample_id]
+taxa <- matrix(rownames(mets), ncol=1)
+colnames(taxa) <- "metabolite"
+rownames(taxa) <- rownames(mets)
+ps <- phyloseq(
+    otu_table(log2(t(assay(mets))), taxa_are_rows = FALSE),
+    sample_data(sdata),
+    tax_table(taxa)
+)
+```
+
+```{r}
+tests <- association(
+    ps, 
+    presence_threshold = -4,
+    min_abundance = -2,
+    in_samples = 0.8,
+    confounders = c("age", "bmi", "sex"),
+    variables = "subset",
+    taxa_rank = "metabolite",
+    method = "lm"
+)
+bmi <- association(
+    ps, 
+    presence_threshold = -4,
+    min_abundance = -2,
+    in_samples = 0.8,
+    confounders = c("age", "sex"),
+    variables = "bmi",
+    taxa_rank = "metabolite",
+    method = "lm"
+)
+tests <- rbind(tests, bmi)
+rowData(mets)$metabolite <- rownames(mets)
+tests <- merge.data.table(tests, rowData(mets), on="metabolite")
+tests
+```
+
+Volcano plots
+
+```{r}
+
+ggplot(tests, aes(log2FoldChange, y=-log10(pvalue), 
+                  shape=padj<0.1, col=variable, size=padj<0.1)) +
+    geom_point() + scale_size_discrete(range=c(2, 3)) +
+    labs(shape="FDR < 0.1", size="FDR < 0.1")
+ggsave("figures/metabolome_volcano.png", dpi=300, width=4, height=3)
+```
+
+Corr
+
+```{r, fig.width=5, fig.height=3}
+wide <- dcast(tests, metabolite ~ variable, value.var=c("t", "padj"), fill=0)
+wide[, "sig" := "none"]
+wide[padj_bmi < 0.05, "sig" := "BMI"]
+wide[padj_subset < 0.05, "sig" := "weight loss"]
+wide[padj_bmi < 0.05 & padj_subset < 0.05, "sig" := "both"]
+wide[, "sig" := factor(sig, levels=c("none", "BMI", "weight loss", "both"))]
+ggplot(wide, aes(x=t_bmi, y=t_subset, color=sig)) +
+    geom_vline(xintercept = 0, color="gray30", lty="dashed") +
+    geom_hline(yintercept = 0, color="gray30", lty="dashed") +
+    geom_point() + stat_smooth(method="glm", aes(group = 1)) +
+    labs(x = "t statistic BMI", y = "t statistic weight loss") +
+    scale_color_manual(values=c(none = "black", BMI = "royalblue", `weight loss`="orange", both = "red"))
+ggsave("figures/metabolome_t.png", dpi=300, width=5, height=3)
+cor.test(~ t_bmi + t_subset, data=wide, method="spearman")
+```

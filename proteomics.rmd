@@ -1,0 +1,94 @@
+---
+title: "Proteome"
+output: html_notebook
+---
+
+```{r}
+library(mbtools)
+library(SummarizedExperiment)
+theme_set(theme_minimal())
+```
+
+# Proteome analysis
+
+Let's start by loading some previously preprocessed proteome data.
+
+```{r}
+prots <- readRDS("/proj/gibbons/toadnet/data/proteome.rds")
+prots
+```
+
+This includes data for all of Arivale so let's filter the sample we are interested in:
+
+```{r}
+manifest <- fread("data/manifest.csv")[has_close_microbiome == T]
+manifest[, public_client_id := paste0("0", as.character(public_client_id))]
+prot_samples <- colData(prots) %>% as.data.table()
+matched <- prot_samples[manifest, on = c("public_client_id", "days_in_program")]
+sdata <- as.data.frame(matched)
+sdata$subset <- factor(sdata$subset)
+sdata$sex <- factor(sdata$sex)
+rownames(sdata) <- sdata$sample_id
+prots <- prots[, prots$sample_id %in% matched$sample_id]
+taxa <- matrix(rownames(prots), ncol=1)
+colnames(taxa) <- "protein"
+rownames(taxa) <- rownames(prots)
+ps <- phyloseq(
+    otu_table(t(assay(prots)), taxa_are_rows = FALSE),
+    sample_data(sdata),
+    tax_table(taxa)
+)
+```
+
+```{r}
+tests <- association(
+    ps, 
+    presence_threshold = -2,
+    min_abundance = 0,
+    in_samples = 0.8,
+    confounders = c("age", "bmi", "sex"),
+    variables = "subset",
+    taxa_rank = "protein",
+    method = "lm"
+)
+bmi <- association(
+    ps, 
+    presence_threshold = -2,
+    min_abundance = 0,
+    in_samples = 0.8,
+    confounders = c("age", "sex"),
+    variables = "bmi",
+    taxa_rank = "protein",
+    method = "lm"
+)
+tests <- rbind(tests, bmi)
+rowData(prots)$protein <- rownames(prots)
+tests <- merge.data.table(tests, rowData(prots), on="protein")
+tests
+```
+
+```{r, fig.width=5, fig.height=3}
+wide <- dcast(tests, protein ~ variable, value.var=c("t", "padj"), fill=0)
+wide[, "sig" := "none"]
+wide[padj_bmi < 0.05, "sig" := "BMI"]
+wide[padj_subset < 0.05, "sig" := "weight loss"]
+wide[padj_bmi < 0.05 & padj_subset < 0.05, "sig" := "both"]
+wide[, "sig" := factor(sig, levels=c("none", "BMI", "weight loss", "both"))]
+ggplot(wide, aes(x=t_bmi, y=t_subset, color=sig)) +
+    geom_vline(xintercept = 0, color="gray30", lty="dashed") +
+    geom_hline(yintercept = 0, color="gray30", lty="dashed") +
+    geom_point() + stat_smooth(method="glm", aes(group = 1)) +
+    labs(x = "t statistic BMI", y = "t statistic weight loss") +
+    scale_color_manual(values=c(none = "black", BMI = "royalblue", `weight loss`="orange", both = "pink"))
+ggsave("figures/proteome_t.png", dpi=300, width=5, height=3)
+cor.test(~ t_bmi + t_subset, data=wide, method="spearman")
+```
+
+```{r}
+
+ggplot(tests, aes(log2FoldChange, y=-log10(pvalue), 
+                  shape=padj<0.1, col=variable, size=padj<0.1)) +
+    geom_point() + scale_size_discrete(range=c(2, 3)) +
+    labs(shape="FDR < 0.1", size="FDR < 0.1")
+ggsave("figures/proteomee_volcano.png", dpi=300, width=4, height=3)
+```

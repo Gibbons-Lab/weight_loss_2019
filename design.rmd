@@ -1,0 +1,199 @@
+---
+title: "Innovator samples"
+output: html_notebook
+---
+
+First, let's start by reading in a list of all blood samples at ISB and annotating them with their
+public ids.
+
+```{r}
+library(arivale.data.interface)
+library(data.table)
+
+proteomics <- get_snapshot("proteomics_raw")
+isb <- fread("data/isb_blood_samples.csv")
+isb[, sample_id := toupper(sample_id)]
+isb <- proteomics[, .(public_client_id, sample_id, days_in_program)][isb, on = "sample_id"]
+isb <- isb[!is.na(public_client_id)]
+isb
+```
+
+Lets filter that for ones with at least two blood draws.
+
+```{r}
+chem <- get_snapshot("chemistries")[vendor == "LCA"]
+chem <- chem[isb, on = c("public_client_id", "days_in_program")]
+tab <- chem[, table(public_client_id)]
+multiple <- isb[public_client_id %chin% names(tab)[tab > 1]]
+setkey(multiple, public_client_id)
+multiple[, uniqueN(public_client_id)]
+```
+
+That leaves us with almost 1.5K individuals.
+
+Now for those we extract the weight data.
+
+```{r}
+weights <- get_snapshot("weight")[
+  public_client_id %chin% multiple$public_client_id &
+  !is.na(BMI_CALC) & !is.na(WEIGHT_CALC)]
+weights[, "weight" := WEIGHT_CALC]
+weights[, uniqueN(public_client_id)]
+setkey(weights, public_client_id)
+```
+
+Let's also get the microbiome samples and chemistries. We will stick only with the DNAGenotek samples.
+
+```{r}
+mb <- get_snapshot("microbiome_diversity")[vendor_dashboard != "Second Genome"]
+setkey(mb, "public_client_id")
+```
+
+Now we will do the heavy lifting and merge the blood draws with weight and microbiome measures. For each unique
+blood draw we will look for the closest microbiome and weight measurement and connect it to the blood draw.
+We also track the major weight and microbiome indicators.
+
+```{r}
+find_close <- function(pid, days, sid, cutoff = 30) {
+  wdists <- abs(days - weights[pid, days_in_program])
+  mbdists <- abs(days - mb[pid, days_in_program])
+  w_best <- weights[pid, days_in_program[which.min(wdists)]]
+  w <- weights[pid, weight[which.min(wdists)]]
+  bmi <- weights[pid, BMI_CALC[which.min(wdists)]]
+  mb_best <- mb[pid, days_in_program[which.min(mbdists)]]
+  mb_id <- mb[pid, vendor_observation_id[which.min(mbdists)]]
+  shannon <- mb[pid, shannon_20000[which.min(mbdists)]]
+  return(list(
+    has_close_weight = any(wdists < cutoff, na.rm = TRUE),
+    has_close_microbiome = any(mbdists < cutoff, na.rm = TRUE),
+    weight_days_in_program = w_best,
+    microbiome_days_in_program = mb_best,
+    weight_diff_days = min(wdists),
+    microbiome_diff_days = min(mbdists),
+    weight = w,
+    bmi = bmi,
+    shannon = shannon,
+    microbiome_id = mb_id,
+    plasma_id = sid))
+}
+
+
+close <- isb[, find_close(public_client_id, days_in_program, sample_id), 
+              by = c("public_client_id", "days_in_program")]
+close[has_close_weight == T, 
+      has_close := (.N > 1 &
+        !any(duplicated(weight_days_in_program))), 
+        by = "public_client_id"]
+matched <- close[has_close == TRUE]
+matched[, table(table(public_client_id))]
+```
+
+
+
+Now let's annotate this with BMI and weight loss. First we will only keep those points with the lowest weight after
+baseline and only those individuals with at least one microbiome sample. Then we annotate the weight loss.
+
+```{r}
+matched <- matched[order(public_client_id, days_in_program), 
+                   .SD[c(1, which.min(weight[2:length(weight)]) + 1)], 
+                   by = "public_client_id"]
+matched[, microbiome_baseline := has_close_microbiome[1], by = "public_client_id"]
+matched <- matched[microbiome_baseline == TRUE]
+matched[, weight_change := diff(weight), by = "public_client_id"]
+matched[, span_days := diff(weight_days_in_program), by = "public_client_id"]
+matched[, weight_change_relative := diff(weight) / weight[1] / span_days * 30.5, by = "public_client_id"]
+matched
+```
+
+Finally lets annotate the individuals and check whether we have full genomes.
+
+```{r}
+clients <- get_snapshot("clients")
+clients[, "has_full_genome" := !is.na(genome_vendor)]
+matched <- clients[, .(public_client_id, has_full_genome, sex, region, age)][matched,
+                   on = "public_client_id"]
+```
+
+Finally we remove the samples that we are not allowed to study.
+
+```{r}
+novo <- fread("data/nn_chem.csv")[spreadsheet_resistance == "Resistant Coach spreadsheet"]
+matched <- matched[!public_client_id %chin% novo$public_client_id]
+```
+
+Let's look at trajectories:
+
+```{r, fig.width=4, fig.height=3}
+theme_set(theme_minimal())
+
+matched[, "since_baseline" := days_in_program - min(days_in_program), by="public_client_id"]
+
+ggplot(matched, aes(x=since_baseline, y=bmi, group=public_client_id)) +
+    geom_line(alpha=0.5, color="seagreen4") +
+    geom_point() +
+    labs(x="time since blood draw [days]", y="BMI [kg/m²]")
+ggsave("figures/bmi_trajectories.png", width=4, height=3, dpi=300)
+```
+
+```{r, fig.width=5, fig.height=3}
+dens <- data.table(
+    weight_change_relative = density(matched$weight_change_relative)$x, 
+    d = density(matched$weight_change_relative)$y
+)
+
+ggplot(dens, aes(x=weight_change_relative, y=d)) + 
+    geom_vline(xintercept=0, lty="dashed") +
+    geom_line() +
+    geom_area(data=dens[weight_change_relative < -0.01], fill="royalblue", alpha=0.5) +
+    geom_area(data=dens[weight_change_relative > 0 & weight_change_relative < 0.001], fill="salmon", alpha=0.5) +
+    labs(x="relative weight change [%weight/month]", y="density")
+ggsave("figures/wc_density.svg", width=5, height=3)
+    
+```
+
+So how many individuals with significant weight loss do we have?
+
+```{r}
+lost <- matched[weight_change_relative < -0.01][order(weight_change_relative)]
+fwrite(lost, "successful_weight_loss.csv")
+print(lost[, uniqueN(public_client_id)])
+lost[, table(sex)]
+```
+
+
+To select controls we can use persons with a pretty stable weight. We should avoid the ones with exactly no
+change in weight since that are often incorrect self-entries of the participants (did not update weight).
+
+```{r}
+controls <- matched[weight_change_relative > 0][order(abs(weight_change_relative))]
+fwrite(controls, "no_weight_loss.csv")
+```
+
+And the sample lists for DNAGenotek:
+
+```{r}
+mblost <- lost[seq(1, 30, by = 2), 
+               .(public_client_id, age, sex, microbiome_days_in_program, microbiome_id)]
+mblost[, "subset" := "weight loss"]
+mbcontrol <- controls[seq(1, 20, by = 2),
+                      .(public_client_id, age, sex, microbiome_days_in_program, microbiome_id)]
+mbcontrol[, "subset" := "controls"]
+fwrite(rbind(mblost, mbcontrol), "dna_genotek.csv")
+```
+
+And for the blood samples:
+
+```{r}
+plasma_lost <- lost[1:30, 
+               .(public_client_id, age, sex, days_in_program, plasma_id)]
+plasma_lost[, "subset" := "weight loss"]
+plasma_control <- controls[1:20,
+                  .(public_client_id, age, sex, days_in_program, plasma_id)]
+plasma_control[, "subset" := "controls"]
+plasma <- rbind(plasma_lost, plasma_control)
+plasma <- isb[plasma, on = c(
+  public_client_id = "public_client_id", 
+  sample_id = "plasma_id", 
+  days_in_program = "days_in_program")]
+fwrite(plasma, "plasma_samples.csv")
+```

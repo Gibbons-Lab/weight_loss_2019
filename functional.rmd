@@ -1,0 +1,190 @@
+---
+title: "Functional analysis"
+output: html_notebook
+---
+
+# Functional analysis
+
+We start by reading the gene counts per sample, metadata, and functional annotations (obtained form EGGNOG).
+
+```{r}
+library(mbtools)
+library(data.table)
+
+genes <- fread("zcat < data/function_counts.csv.gz", drop=1)
+manifest <- fread("data/manifest.csv")
+annotations <- fread("data/annotated/denovo.emapper.annotations", 
+                     sep = "\t", na.strings = c("", "NA"))
+genes <- genes[annotations, on = c(locus_tag = "#query_name"), nomatch = NULL]
+genes[, vendor_observation_id := tstrsplit(sample, "\\.")[[1]]]
+head(genes)
+```
+
+Genes are not really universal:
+
+```{r}
+library(ggplot2)
+theme_set(theme_minimal())
+
+sample_counts <- genes[, .N, by="locus_tag"]
+ggplot(sample_counts, aes(x=N)) + geom_bar()
+```
+
+A better way is to group by unique KO term assignments:
+
+```{r}
+ko_map <- data.table(KEGG_ko = genes[KEGG_ko != "", KEGG_ko])
+ko_map <- ko_map[, .(ko_term = strsplit(KEGG_ko, ",")[[1]]), by=KEGG_ko]
+expanded <- ko_map[genes, on="KEGG_ko", allow.cartesian = TRUE, nomatch = 0]
+ko <- expanded[, .(
+    reads = sum(reads),
+    tpm = sum(tpm)
+), by = c("ko_term", "vendor_observation_id")]
+
+concat <- function(x) {
+    x <- unlist(strsplit(x[!is.na(x)], ","))
+    paste0(unique(x), collapse=",")
+}
+
+anns <- expanded[, .(
+    EC = concat(EC),
+    bigg_reaction = concat(BiGG_Reaction),
+    description = concat(`eggNOG free text desc.`),
+    CAZy = concat(CAZy),
+    KEGG_Pathway = concat(KEGG_Pathway),
+    BRITE = concat(BRITE),
+    name = concat(Preferred_name)
+), by="ko_term"]
+setkey(anns, ko_term)
+head(ko)
+```
+
+This generalizes better:
+
+```{r}
+ggplot(ko[, .N, by="ko_term"], aes(x=N)) + geom_bar()
+```
+
+Let's build up the data structures for testing:
+
+```{r}
+counts <- dcast(ko, ko_term ~ vendor_observation_id, value.var = "reads", fill = 0)
+ko_terms <- counts[, ko_term]
+counts <- as.matrix(counts[, ko_term := NULL])
+rownames(counts) <- ko_terms
+meta <- manifest[has_close_microbiome == T] %>% as.data.frame()
+rownames(meta) <- as.character(meta$vendor_observation_id)
+```
+
+No we can start building the DESeq analysis:
+
+```{r}
+library(futile.logger)
+taxa <- matrix(ko_terms, ncol=1)
+colnames(taxa) <- "ko_term"
+rownames(taxa) <- ko_terms
+meta$subset <- factor(meta$subset)
+meta$sex <- factor(meta$sex)
+
+flog.threshold(DEBUG)
+
+ps <- phyloseq(
+    otu_table(t(round(counts)), taxa_are_rows=FALSE),
+    tax_table(taxa),
+    sample_data(meta)
+)
+
+tests <- association(
+    ps,
+    presence_threshold = 1,
+    min_abundance = 10,
+    in_samples = 0.9,
+    confounders = c("age", "bmi", "sex"),
+    variables = "subset",
+    taxa_rank = "ko_term",
+    method = "deseq2"
+)
+bmi <- association(
+    ps, 
+    presence_threshold = 1,
+    min_abundance = 10,
+    in_samples = 0.9,
+    confounders = c("age", "sex"),
+    variables = "bmi",
+    taxa_rank = "ko_term",
+    method = "deseq2"
+)
+
+tests <- rbind(tests, bmi)
+tests <- anns[tests, on="ko_term"]
+tests[variable == "subset"][order(padj)]
+```
+
+Volcano plots
+
+```{r}
+ggplot(tests, aes(log2FoldChange, y=-log10(pvalue), 
+                  shape=padj<0.1, col=variable)) +
+    geom_point() +
+    labs(shape="FDR < 0.1", size="FDR < 0.1")
+#ggsave("figures/gene_volcano.png", dpi=300, width=4, height=3)
+```
+
+Corr
+
+```{r, fig.width=5, fig.height=3}
+tests[, "t" := log2FoldChange / lfcSE]
+
+wide <- dcast(tests, ko_term ~ variable, value.var=c("t", "padj"), fill=0)
+wide[, "sig" := "none"]
+wide[padj_bmi < 0.05, "sig" := "BMI"]
+wide[padj_subset < 0.05, "sig" := "weight loss"]
+wide[padj_bmi < 0.05 & padj_subset < 0.05, "sig" := "both"]
+wide[, "sig" := factor(sig, levels=c("none", "BMI", "weight loss", "both"))]
+ggplot(wide, aes(x=t_bmi, y=t_subset, color=sig)) +
+    geom_vline(xintercept = 0, color="gray30", lty="dashed") +
+    geom_hline(yintercept = 0, color="gray30", lty="dashed") +
+    geom_point() + stat_smooth(method="glm", aes(group = 1)) +
+    labs(x = "t statistic BMI", y = "t statistic weight loss") +
+    scale_color_manual(values=c(none = "black", BMI = "royalblue", `weight loss`="orange", both = "red"))
+ggsave("figures/koterm_t.png", dpi=300, width=5, height=3)
+cor.test(~ t_bmi + t_subset, data=wide, method="spearman")
+```
+
+Let's visualize the significant hits.
+
+```{r, fig.width = 5, fig.height = 3}
+sig <- tests[variable == "subset" & padj<0.05 & CAZy != "", ko_term]
+ko_counts <- mbtools::normalize(round(counts))
+kos <- rownames(ko_counts)
+ko_counts <- as.data.table(ko_counts)[, ko_term := kos]
+ko_counts <- melt(setDT(ko_counts), id.vars = "ko_term", variable.name = "vendor_observation_id", value.name = "reads")
+sig <- ko_counts[ko_term %chin% sig]
+sig <- anns[sig, on="ko_term"]
+manifest[, vendor_observation_id := as.character(vendor_observation_id)]
+sig <- manifest[corebiome == T][sig, on="vendor_observation_id"]
+
+ggplot(sig, aes(x = bmi, y = reads)) + 
+    geom_point() +
+    scale_y_log10() +
+    stat_smooth(method="glm", aes(group = 1), col = "black") +
+    facet_wrap(~ CAZy, scales = "free_y") + 
+    labs(x="BMI", y="normalized reads") + guides(color = F) +
+ggsave("figures/gene_bmi.png", dpi=300, width=6, height=4)
+
+ggplot(sig, aes(x = subset, y = reads, color=subset)) + 
+    geom_jitter(width=0.2) +
+    scale_y_log10() +
+    stat_summary(fun.y = "mean", geom = "point", pch=23, stroke = 1, size=3, fill = "white") +
+    facet_wrap(~ CAZy, scales = "free_y") + 
+    labs(x="", y="normalized reads") + guides(color = F) +
+ggsave("figures/gene_abundance.png", dpi=300, width=6, height=4)
+
+ggplot(tests[variable == "subset" & padj<0.05 & CAZy != "", ], 
+       aes(x=log2FoldChange, y=reorder(CAZy, log2FoldChange), color=log10(baseMean))) +
+    geom_vline(xintercept = 0, lty="dashed", color="gray20") +
+    geom_linerange(aes(xmin=log2FoldChange - lfcSE, xmax=log2FoldChange + lfcSE)) + 
+    geom_point(size=2) +
+    labs(x = "log2 fold-change", y = "", color = "abundace [log10]")
+ggsave("figures/lfcs.png", dpi=300, width=4, height=3)
+```

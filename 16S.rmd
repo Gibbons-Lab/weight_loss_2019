@@ -1,0 +1,79 @@
+---
+title: "Existing data"
+output: html_notebook
+---
+
+
+```{r}
+library(arivale.data.interface)
+library(mbtools)
+```
+
+```{r}
+classes <- c(public_client_id = "character", vendor_observation_id = "character")
+cohort <- fread("data/manifest.csv", colClasses=classes)[has_close_microbiome == T]
+```
+
+```{r}
+ps <- readRDS("/proj/arivale/microbiome/16S_processed/phyloseq.rds")
+ps <- subset_samples(ps, vendor_observation_id %in% cohort[has_close_microbiome == TRUE, vendor_observation_id])
+ps
+```
+
+```{r}
+genus <- speedyseq::tax_glom(ps, "Genus")
+
+sdata <- merge(
+    as(sample_data(genus), "data.frame"),
+    as.data.frame(cohort[has_close_microbiome == TRUE]),
+    by = c("vendor_observation_id", "sex", "age")
+)
+rownames(sdata) <- sample_names(ps)
+sdata$subset <- factor(sdata$subset)
+sdata$sex <- factor(sdata$sex)
+sample_data(genus) <- sdata
+```
+
+```{r}
+tests <- association(
+    genus, 
+    presence_threshold = 0.5,
+    min_abundance = 2,
+    in_samples = 0.8,
+    confounders = c("age", "bmi", "sex"),
+    variables = "subset",
+    taxa_rank = "Genus",
+    method = "deseq2"
+)
+bmi <- association(
+    genus, 
+    presence_threshold = 0.5,
+    min_abundance = 2,
+    in_samples = 0.8,
+    confounders = c("age", "sex"),
+    variables = "bmi",
+    taxa_rank = "Genus",
+    method = "deseq2"
+)
+tests <- rbind(tests, bmi)
+tests <- merge.data.table(tests, as.data.frame(as(tax_table(genus), "matrix")), on="Genus")
+tests
+```
+
+```{r, fig.width=5, fig.height=3}
+tests[, "t" := log2FoldChange / lfcSE]
+wide <- dcast(tests, Genus ~ variable, value.var=c("t", "padj"), fill=0)
+wide[, "sig" := "none"]
+wide[padj_bmi < 0.05, "sig" := "BMI"]
+wide[padj_subset < 0.05, "sig" := "weight loss"]
+wide[padj_bmi < 0.05 & padj_subset < 0.05, "sig" := "both"]
+wide[, "sig" := factor(sig, levels=c("none", "BMI", "weight loss", "both"))]
+ggplot(wide, aes(x=t_bmi, y=t_subset, color=sig)) +
+    geom_vline(xintercept = 0, color="gray30", lty="dashed") +
+    geom_hline(yintercept = 0, color="gray30", lty="dashed") +
+    geom_point() + stat_smooth(method="glm", aes(group = 1)) +
+    labs(x = "t statistic BMI", y = "t statistic weight loss") +
+    scale_color_manual(values=c(none = "black", BMI = "royalblue", `weight loss`="orange", both = "red"))
+ggsave("figures/16S_genus_t.png", dpi=300, width=5, height=3)
+cor.test(~ t_bmi + t_subset, data=wide, method="spearman")
+```
