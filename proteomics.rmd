@@ -81,7 +81,7 @@ ggplot(wide, aes(x=t_bmi, y=t_subset, color=sig)) +
     labs(x = "t statistic BMI", y = "t statistic weight loss") +
     scale_color_manual(values=c(none = "black", BMI = "royalblue", `weight loss`="orange", both = "pink"))
 ggsave("figures/proteome_t.png", dpi=300, width=5, height=3)
-cor.test(~ t_bmi + t_subset, data=wide, method="spearman")
+cor.test(~ t_bmi + t_subset, data=wide)
 ```
 
 ```{r}
@@ -91,4 +91,15 @@ ggplot(tests, aes(log2FoldChange, y=-log10(pvalue),
     geom_point() + scale_size_discrete(range=c(2, 3)) +
     labs(shape="FDR < 0.1", size="FDR < 0.1")
 ggsave("figures/proteomee_volcano.png", dpi=300, width=4, height=3)
+```
+
+## Overall explained variance
+
+```{r}
+library(vegan)
+
+m <- as(otu_table(ps), "matrix")
+m[is.na(m)] <- min(as.numeric(m), na.rm=T)
+perm <- adonis(m ~ age + sex + bmi + subset, data=as(sample_data(ps), "data.frame"), method="euclidean")
+perm
 ```

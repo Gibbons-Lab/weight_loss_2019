@@ -26,7 +26,7 @@ Genes are not really universal:
 library(ggplot2)
 theme_set(theme_minimal())
 
-sample_counts <- genes[, .N, by="locus_tag"]
+sample_counts <- genes[, .(N=uniqueN(sample)), by="seed_eggNOG_ortholog"]
 ggplot(sample_counts, aes(x=N)) + geom_bar()
 ```
 
@@ -98,26 +98,48 @@ tests <- association(
     ps,
     presence_threshold = 1,
     min_abundance = 10,
-    in_samples = 0.9,
+    in_samples = 1,
     confounders = c("age", "bmi", "sex"),
     variables = "subset",
     taxa_rank = "ko_term",
-    method = "deseq2"
+    method = "deseq2",
+    shrink=F
 )
 bmi <- association(
     ps, 
     presence_threshold = 1,
     min_abundance = 10,
-    in_samples = 0.9,
+    in_samples = 1,
     confounders = c("age", "sex"),
     variables = "bmi",
     taxa_rank = "ko_term",
-    method = "deseq2"
+    method = "deseq2",
+    shrink=F
 )
 
 tests <- rbind(tests, bmi)
 tests <- anns[tests, on="ko_term"]
 tests[variable == "subset"][order(padj)]
+```
+
+We will also add in the rough BRITE class for each hit.
+
+```{r}
+library(stringr)
+library(KEGGREST)
+
+annotate <- function(ko) {
+    res <- tryCatch(
+        keggGet(ko)[[1]],
+        error = function(e) return(NULL)
+    )
+    if (is.null(res)) {
+        return(list(name = NA, brite = NA))
+    }
+    return(list(name = res$NAME, brite = paste0(res$BRITE, collapse="\n")))
+}
+
+tests[variable == "subset" & padj < 0.05, c("name", "brite") := annotate(ko_term), by=ko_term]
 ```
 
 Volcano plots
@@ -148,13 +170,13 @@ ggplot(wide, aes(x=t_bmi, y=t_subset, color=sig)) +
     labs(x = "t statistic BMI", y = "t statistic weight loss") +
     scale_color_manual(values=c(none = "black", BMI = "royalblue", `weight loss`="orange", both = "red"))
 ggsave("figures/koterm_t.png", dpi=300, width=5, height=3)
-cor.test(~ t_bmi + t_subset, data=wide, method="spearman")
+cor.test(~ t_bmi + t_subset, data=wide)
 ```
 
 Let's visualize the significant hits.
 
 ```{r, fig.width = 5, fig.height = 3}
-sig <- tests[variable == "subset" & padj<0.05 & CAZy != "", ko_term]
+sig <- tests[variable == "subset" & padj<0.05, ko_term]
 ko_counts <- mbtools::normalize(round(counts))
 kos <- rownames(ko_counts)
 ko_counts <- as.data.table(ko_counts)[, ko_term := kos]
@@ -168,7 +190,7 @@ ggplot(sig, aes(x = bmi, y = reads)) +
     geom_point() +
     scale_y_log10() +
     stat_smooth(method="glm", aes(group = 1), col = "black") +
-    facet_wrap(~ CAZy, scales = "free_y") + 
+    facet_wrap(~ ko_term, scales = "free_y") + 
     labs(x="BMI", y="normalized reads") + guides(color = F) +
 ggsave("figures/gene_bmi.png", dpi=300, width=6, height=4)
 
@@ -176,15 +198,27 @@ ggplot(sig, aes(x = subset, y = reads, color=subset)) +
     geom_jitter(width=0.2) +
     scale_y_log10() +
     stat_summary(fun.y = "mean", geom = "point", pch=23, stroke = 1, size=3, fill = "white") +
-    facet_wrap(~ CAZy, scales = "free_y") + 
+    facet_wrap(~ ko_term, scales = "free_y") + 
     labs(x="", y="normalized reads") + guides(color = F) +
 ggsave("figures/gene_abundance.png", dpi=300, width=6, height=4)
 
-ggplot(tests[variable == "subset" & padj<0.05 & CAZy != "", ], 
-       aes(x=log2FoldChange, y=reorder(CAZy, log2FoldChange), color=log10(baseMean))) +
+ggplot(tests[variable == "subset" & padj<0.05, ], 
+       aes(x=log2FoldChange, y=name, color=log10(baseMean), group=ko_term)) +
     geom_vline(xintercept = 0, lty="dashed", color="gray20") +
     geom_linerange(aes(xmin=log2FoldChange - lfcSE, xmax=log2FoldChange + lfcSE)) + 
     geom_point(size=2) +
     labs(x = "log2 fold-change", y = "", color = "abundace [log10]")
 ggsave("figures/lfcs.png", dpi=300, width=4, height=3)
 ```
+
+## Overall explained variance
+
+```{r}
+library(vegan)
+
+m <- as(otu_table(ps), "matrix")
+perm <- adonis(mbtools::normalize(m) ~ age + sex + bmi + subset, data=as(sample_data(ps), "data.frame"), method="bray")
+perm
+```
+
+## 

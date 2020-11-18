@@ -4,7 +4,7 @@ output: html_notebook
 ---
 
 ```{r}
-devtools::load_all("~/mbtools")
+library(mbtools)
 library(phyloseq)
 library(SummarizedExperiment)
 theme_set(theme_minimal())
@@ -96,5 +96,16 @@ ggplot(wide, aes(x=t_bmi, y=t_subset, color=sig)) +
     labs(x = "t statistic BMI", y = "t statistic weight loss") +
     scale_color_manual(values=c(none = "black", BMI = "royalblue", `weight loss`="orange", both = "red"))
 ggsave("figures/metabolome_t.png", dpi=300, width=5, height=3)
-cor.test(~ t_bmi + t_subset, data=wide, method="spearman")
+cor.test(~ t_bmi + t_subset, data=wide)
+```
+
+## Overall explained variance
+
+```{r}
+library(vegan)
+
+m <- as(otu_table(ps), "matrix")
+m[is.na(m)] <- min(as.numeric(m), na.rm=T)
+perm <- adonis(m ~ age + sex + bmi + subset, data=as(sample_data(ps), "data.frame"), method="euclidean")
+perm
 ```
