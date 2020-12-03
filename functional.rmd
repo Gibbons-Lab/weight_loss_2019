@@ -122,26 +122,6 @@ tests <- anns[tests, on="ko_term"]
 tests[variable == "subset"][order(padj)]
 ```
 
-We will also add in the rough BRITE class for each hit.
-
-```{r}
-library(stringr)
-library(KEGGREST)
-
-annotate <- function(ko) {
-    res <- tryCatch(
-        keggGet(ko)[[1]],
-        error = function(e) return(NULL)
-    )
-    if (is.null(res)) {
-        return(list(name = NA, brite = NA))
-    }
-    return(list(name = res$NAME, brite = paste0(res$BRITE, collapse="\n")))
-}
-
-tests[variable == "subset" & padj < 0.05, c("name", "brite") := annotate(ko_term), by=ko_term]
-```
-
 Volcano plots
 
 ```{r}
@@ -175,7 +155,7 @@ cor.test(~ t_bmi + t_subset, data=wide)
 
 Let's visualize the significant hits.
 
-```{r, fig.width = 5, fig.height = 3}
+```{r, fig.width = 12, fig.height = 10}
 sig <- tests[variable == "subset" & padj<0.05, ko_term]
 ko_counts <- mbtools::normalize(round(counts))
 kos <- rownames(ko_counts)
@@ -185,6 +165,8 @@ sig <- ko_counts[ko_term %chin% sig]
 sig <- anns[sig, on="ko_term"]
 manifest[, vendor_observation_id := as.character(vendor_observation_id)]
 sig <- manifest[corebiome == T][sig, on="vendor_observation_id"]
+groups <- fread("data/sig_grouping.csv")
+tests <- groups[tests, on="ko_term"]
 
 ggplot(sig, aes(x = bmi, y = reads)) + 
     geom_point() +
@@ -201,14 +183,17 @@ ggplot(sig, aes(x = subset, y = reads, color=subset)) +
     facet_wrap(~ ko_term, scales = "free_y") + 
     labs(x="", y="normalized reads") + guides(color = F) +
 ggsave("figures/gene_abundance.png", dpi=300, width=6, height=4)
+```
 
+```{r, fig.width=6, fig.height=4}
+pd <- position_dodge(0.3)
 ggplot(tests[variable == "subset" & padj<0.05, ], 
-       aes(x=log2FoldChange, y=name, color=log10(baseMean), group=ko_term)) +
+       aes(x=log2FoldChange, y=reorder(group, log2FoldChange), color=log10(baseMean), group=ko_term)) +
     geom_vline(xintercept = 0, lty="dashed", color="gray20") +
-    geom_linerange(aes(xmin=log2FoldChange - lfcSE, xmax=log2FoldChange + lfcSE)) + 
-    geom_point(size=2) +
+    geom_linerange(aes(xmin=log2FoldChange - lfcSE, xmax=log2FoldChange + lfcSE), position=pd) + 
+    geom_point(size=2, position=pd) +
     labs(x = "log2 fold-change", y = "", color = "abundace [log10]")
-ggsave("figures/lfcs.png", dpi=300, width=4, height=3)
+ggsave("figures/lfcs.png", dpi=300, width=6, height=4)
 ```
 
 ## Overall explained variance
