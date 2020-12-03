@@ -11,21 +11,35 @@ library(mbtools)
 rates <- fread("data/rates.csv")
 manifest <- fread("data/manifest.csv")
 rates <- rates[manifest, on = c(id = "vendor_observation_id"), allow.cartesian = T]
+
+taxonomy <- fread("data/contigs.classification.names.txt", sep="\t", na.strings=c("NA", "not classified", ""), fill=T)
+for (col in c("superkingdom", "phylum", "class", "order", "family", "genus", "species")) {
+    taxonomy[[col]] <- gsub(":.+$", "", taxonomy[[col]])
+}
+names(taxonomy)[1] <- "contig"
+rates <- taxonomy[rates, on="contig"]
 head(rates)
 ```
 
-```{r, fig.width=2.5, fig.height=4}
+```{r, fig.width=3.5, fig.height=4}
 theme_set(theme_minimal())
 
-ggplot(rates, aes(x = subset, y = rate, color = subset)) + 
+ggplot(rates, aes(x = subset, y = rate, color = phylum, group = subset)) + 
     scale_y_log10() +
-    geom_jitter(width=0.2, alpha=0.5, size = 1) +
-    labs(x = "", y = "replication rate [a.u.]") + guides(color = F)
-ggsave("figures/replication.png", width=2.5, height=4, dpi=300)
+    geom_jitter(width=0.3) +
+    labs(x = "", y = "replication rate [a.u.]") + theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1))
+ggsave("figures/replication.png", width=4, height=4, dpi=300)
+```
+
+```{r, fig.width=9, fig.height=1.5}
+ggplot(rates, aes(x = subset, y = rate, color = phylum)) + 
+    scale_y_log10() +
+    geom_jitter( width=0.3) + facet_wrap(~ phylum, nrow=1) + coord_flip() +
+    labs(x = "", y = "replication rate [a.u.]") + guides(color = FALSE)
 ```
 
 ```{r}
-glm(log(rate) ~ age + bmi + subset, data=rates) %>% summary()
+glm(log(rate) ~ age + bmi + subset, data=rates[phylum == "Verrucomicrobia"]) %>% summary()
 ```
 
 ```{r}
@@ -39,8 +53,27 @@ merged[, "bowel_movement" := assessment_digestion_bowel_movements_enum]
 ```
 
 ```{r}
-ggplot(merged, aes(x=bowel_movement, y=rate)) + 
-    geom_jitter(width=0.2) + scale_y_log10()
+ggplot(merged, aes(x=bowel_movement, y=rate, color=phylum, group=bowel_movement)) + 
+    geom_jitter(width=0.2) + scale_y_log10() + 
+    geom_boxplot(color="black", width=0.2, outlier.color=NA)
 
-glm(factor(subset) ~ bowel_movement + sex + age, data=unique(merged[, .(subset, bowel_movement, sex, age)]), family="binomial") %>% summary()
+glm(log(rate) ~ bowel_movement + sex + age, data=unique(merged[, .(rate, bowel_movement, sex, age)]), family="gaussian") %>% summary()
+```
+
+# Cohort composition
+
+```{r}
+library(mbtools)
+genera <- fread("data/G_counts.csv")
+
+mat <- dcast(genera, `sample` ~ genus, value.var="reads")
+ids <- mat[, `sample`]
+mat <- as.matrix(mat[, "genus" := NULL])
+rownames(mat) <- ids
+taxa <- matrix(colnames(mat), ncol=1)
+colnames(taxa) <- "genus"
+rownames(taxa) <- taxa[,1]
+ps <- phyloseq(otu_table(mat, taxa_are_rows = F), tax_table(taxa))
+
+plot_taxa(ps, "genus")
 ```
