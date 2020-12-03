@@ -28,18 +28,27 @@ ggplot(rates, aes(x = subset, y = rate, color = phylum, group = subset)) +
     scale_y_log10() +
     geom_jitter(width=0.3) +
     labs(x = "", y = "replication rate [a.u.]") + theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1))
-ggsave("figures/replication.png", width=4, height=4, dpi=300)
 ```
 
-```{r, fig.width=9, fig.height=1.5}
+```{r, fig.width=8, fig.height=1.5}
 ggplot(rates, aes(x = subset, y = rate, color = phylum)) + 
     scale_y_log10() +
-    geom_jitter( width=0.3) + facet_wrap(~ phylum, nrow=1) + coord_flip() +
+    geom_jitter(width=0.3, size=1) + facet_wrap(~ phylum, nrow=1) + 
+    stat_summary(fun.y = "mean", geom = "point", pch=23, stroke = 1, size=2, color="black") +
+    coord_flip() +
     labs(x = "", y = "replication rate [a.u.]") + guides(color = FALSE)
+ggsave("figures/replication.png", width=8, height=1.5, dpi=300)
 ```
 
 ```{r}
-glm(log(rate) ~ age + bmi + subset, data=rates[phylum == "Verrucomicrobia"]) %>% summary()
+for (p in rates[!is.na(phylum), unique(phylum)]) {
+    if (rates[phylum == p, uniqueN(subset) == 2]) {
+        print(p)
+        glm(log(rate) ~ age + bmi + subset, data=rates[phylum == p]) %>% summary() %>% print()
+    }
+}
+print("NA")
+glm(log(rate) ~ age + bmi + subset, data=rates[is.na(phylum)]) %>% summary()
 ```
 
 ```{r}
