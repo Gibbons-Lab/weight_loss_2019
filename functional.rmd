@@ -183,8 +183,6 @@ ggplot(sig, aes(x = subset, y = reads, color=subset)) +
     facet_wrap(~ ko_term, scales = "free_y") + 
     labs(x="", y="normalized reads") + guides(color = F) +
 ggsave("figures/gene_abundance.png", dpi=300, width=6, height=4)
-
-fwrite(sig, "data/significant_functions.csv")
 ```
 
 ```{r, fig.width=5, fig.height=5}
@@ -197,6 +195,8 @@ ggplot(tests[variable == "subset" & padj<0.05, ],
     labs(x = "log2 fold-change", y = "", color = "abundance") +
     theme(legend.position="bottom")
 ggsave("figures/lfcs.png", dpi=300, width=5, height=5)
+
+fwrite(tests[variable == "subset" & padj<0.05, ], "data/significant_functions.csv")
 ```
 
 ## Overall explained variance
