@@ -54,7 +54,8 @@ tests <- association(
     confounders = c("age", "bmi", "sex"),
     variables = "subset",
     taxa_rank = rank,
-    method = "deseq2"
+    method = "deseq2",
+    shrink=F
 )
 bmi <- association(
     ps, 
@@ -64,7 +65,8 @@ bmi <- association(
     confounders = c("age", "sex"),
     variables = "bmi",
     taxa_rank = rank,
-    method = "deseq2"
+    method = "deseq2",
+    shrink=F
 )
 tests <- rbind(tests, bmi)
 tests <- merge.data.table(tests, as.data.frame(as(tax_table(ps), "matrix")), on=rank)

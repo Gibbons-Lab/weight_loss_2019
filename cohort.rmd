@@ -24,7 +24,7 @@ chem <- chem[cohort, on=c("public_client_id", "days_in_program"), roll="nearest"
 ggplot(cohort, aes(x=subset, y=bmi, color=subset)) + 
     geom_jitter(width=0.2) +
     labs(x="", y=expression(paste("BMI [", kg/m^2, "]"))) +
-    guides(color=F)
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
 ggsave("figures/bmi.svg", width=2, height=3)
 ```
 
@@ -32,15 +32,15 @@ ggsave("figures/bmi.svg", width=2, height=3)
 ggplot(cohort, aes(x=subset, y=age, color=subset)) + 
     geom_jitter(width=0.2) +
     labs(x="", y="age [years]") +
-    guides(color=F)
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
 ggsave("figures/age.svg", width=2, height=3)
 ```
 
 ```{r, fig.width=2, fig.height=3}
 ggplot(cohort, aes(x=subset, y=weight_change_relative, color=subset)) + 
     geom_jitter(width=0.2) +
-    labs(x="", y="rel. weight change [%/month]") +
-    guides(color=F)
+    # labs(x="", y="rel. Δweight [%/month]") +
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
 ggsave("figures/weight_change.svg", width=2, height=3)
 ```
 
@@ -48,7 +48,7 @@ ggsave("figures/weight_change.svg", width=2, height=3)
 ggplot(chem, aes(x=subset, y=ADIPONECTIN__SERUM, color=subset)) + 
     geom_jitter(width=0.2) +
     labs(x="", y="serum adiponectin [mg/L]") +
-    guides(color=F)
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
 ggsave("figures/adiponectin.svg", width=2, height=3)
 ```
 
@@ -56,7 +56,7 @@ ggsave("figures/adiponectin.svg", width=2, height=3)
 ggplot(chem, aes(x=subset, y=HDL_CHOL_DIRECT, color=subset)) + 
     geom_jitter(width=0.2) +
     labs(x="", y="serum HDL [mg/L]") +
-    guides(color=F)
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
 ggsave("figures/hdl.svg", width=2, height=3)
 ```
 
@@ -64,7 +64,7 @@ ggsave("figures/hdl.svg", width=2, height=3)
 ggplot(chem, aes(x=subset, y=LDL_CHOL_CALCULATION, color=subset)) + 
     geom_jitter(width=0.2) +
     labs(x="", y="serum LDL [mg/L]") +
-    guides(color=F)
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
 ggsave("figures/ldl.svg", width=2, height=3)
 ```
 
@@ -72,7 +72,7 @@ ggsave("figures/ldl.svg", width=2, height=3)
 ggplot(chem, aes(x=subset, y=GLUCOSE, color=subset)) + 
     geom_jitter(width=0.2) +
     labs(x="", y="serum glucose [mg/L]") +
-    guides(color=F)
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
 ggsave("figures/glucose.svg", width=2, height=3)
 ```
 
@@ -80,6 +80,6 @@ ggsave("figures/glucose.svg", width=2, height=3)
 ggplot(chem, aes(x=subset, y=HOMA_IR, color=subset)) + 
     geom_jitter(width=0.2) +
     labs(x="", y="HOMA IR [index]") +
-    guides(color=F)
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
 ggsave("figures/homa_ir.svg", width=2, height=3)
 ```

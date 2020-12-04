@@ -31,9 +31,10 @@ ggplot(rates, aes(x = subset, y = rate, color = phylum, group = subset)) +
 ```
 
 ```{r, fig.width=8, fig.height=1.5}
-ggplot(rates, aes(x = subset, y = rate, color = phylum)) + 
+pj <- position_jitter(width=0.3)
+ggplot(rates, aes(x = subset, y = rate, color = phylum, group=subset)) + 
     scale_y_log10() +
-    geom_jitter(width=0.3, size=1) + facet_wrap(~ phylum, nrow=1) + 
+    geom_point(position=pj, size=1) + facet_wrap(~ phylum, nrow=1) + 
     stat_summary(fun.y = "mean", geom = "point", pch=23, stroke = 1, size=2, color="black") +
     coord_flip() +
     labs(x = "", y = "replication rate [a.u.]") + guides(color = FALSE)
