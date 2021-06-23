@@ -69,6 +69,9 @@ ggplot(merged, aes(x=bowel_movement, y=rate, color=phylum, group=bowel_movement)
 
 glm(log(rate) ~ bowel_movement + sex + age, data=unique(merged[, .(rate, bowel_movement, sex, age)]), family="gaussian") %>% summary()
 ```
+```{r}
+glm(factor(subset) ~ bowel_movement + sex + age, data=unique(merged[, .(public_client_id, bowel_movement, sex, age, subset)]), family="binomial") %>% summary()
+```
 
 # Cohort composition
 

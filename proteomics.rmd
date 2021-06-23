@@ -21,8 +21,15 @@ prots
 This includes data for all of Arivale so let's filter the sample we are interested in:
 
 ```{r}
-manifest <- fread("data/manifest.csv")[has_close_microbiome == T]
-manifest[, public_client_id := paste0("0", as.character(public_client_id))]
+cohort <- rbind(
+    fread("no_weight_loss.csv", colClasses=c(public_client_id="character")),
+    fread("successful_weight_loss.csv", colClasses=c(public_client_id="character"))
+)[since_baseline == 0]
+cohort[, "subset" := "controls"]
+cohort[weight_change_relative < 0, "subset" := "weight loss"]
+cohort[, subset := factor(subset)]
+
+manifest <- cohort
 prot_samples <- colData(prots) %>% as.data.table()
 matched <- prot_samples[manifest, on = c("public_client_id", "days_in_program")]
 sdata <- as.data.frame(matched)
@@ -33,8 +40,11 @@ prots <- prots[, prots$sample_id %in% matched$sample_id]
 taxa <- matrix(rownames(prots), ncol=1)
 colnames(taxa) <- "protein"
 rownames(taxa) <- rownames(prots)
+mat <- as.matrix(t(assay(prots)))
+complete <- apply(mat, 2, function(x) all(!is.na(x)))
+mat <- mat[, complete]
 ps <- phyloseq(
-    otu_table(t(assay(prots)), taxa_are_rows = FALSE),
+    otu_table(mat, taxa_are_rows = FALSE),
     sample_data(sdata),
     tax_table(taxa)
 )
@@ -45,7 +55,7 @@ tests <- association(
     ps, 
     presence_threshold = -2,
     min_abundance = 0,
-    in_samples = 0.8,
+    in_samples = 0.5,
     confounders = c("age", "bmi", "sex"),
     variables = "subset",
     taxa_rank = "protein",
@@ -55,7 +65,7 @@ bmi <- association(
     ps, 
     presence_threshold = -2,
     min_abundance = 0,
-    in_samples = 0.8,
+    in_samples = 0.5,
     confounders = c("age", "sex"),
     variables = "bmi",
     taxa_rank = "protein",

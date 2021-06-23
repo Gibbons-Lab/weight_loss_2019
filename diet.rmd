@@ -1,0 +1,82 @@
+---
+title: "Diet covariates"
+output: html_notebook
+---
+
+```{r}
+library(arivale.data.interface)
+
+list_snapshot_contents()
+qs <- get_snapshot("assessments", clean=T)
+diet_variables <- names(qs)[grepl("diet_freq", names(qs))]
+lifestyle_variables <- c(
+    "assessment_lifestyle_cruciferous_vegetables_enum",
+    "assessment_lifestyle_fruits_enum",                      
+    "assessment_lifestyle_vegetables_enum",                  
+    "assessment_lifestyle_sugary_drinks_enum",               
+    "assessment_lifestyle_water_enum",                       
+    "assessment_lifestyle_alcohol_drinks_a_day_enum",        
+    "assessment_lifestyle_grains_enum"
+)
+variables <- c(diet_variables, lifestyle_variables)
+qs <- qs[, c("public_client_id", variables), with=FALSE]
+qs[, "complete" := apply(qs, 1, function(x) sum(!is.na(x))/length(x))]
+qs <- qs[order(-complete)][!duplicated(public_client_id)]
+```
+
+All of those should be on a ordinal scale so we will conver them to the corresponding rank values.
+
+```{r}
+library(stringr)
+library(magrittr)
+
+for (v in variables) {
+    qs[[v]] <- str_match(qs[[v]], "^\\((\\d)\\)")[, 2] %>% as.numeric()
+}
+
+qs
+```
+
+Now let's merge in our selected cohort.
+
+```{r}
+cohort <- rbind(
+    fread("no_weight_loss.csv", colClasses=c(public_client_id="character")),
+    fread("successful_weight_loss.csv", colClasses=c(public_client_id="character"))
+)[since_baseline == 0]
+cohort[, "subset" := "controls"]
+cohort[weight_change_relative < 0, "subset" := "weight loss"]
+cohort[, subset := factor(subset)]
+
+data <- qs[cohort, on="public_client_id"]
+```
+
+Finally we can run the models for BMI.
+
+```{r}
+models <- lapply(variables, function(v){
+    reformulate(c("age", "sex", v), "bmi") %>% glm(data=data)
+})
+
+bmi_tests <- lapply(models, function(m) {
+    coefs <- summary(m)$coefficients
+    data.table(variable=rownames(coefs)[4], coef=coefs[4, 1], se=coefs[4, 2], p=coefs[4, 4])
+}) %>% rbindlist()
+bmi_tests[, "padj" := p.adjust(p, method="fdr")]
+bmi_tests[order(p)]
+```
+
+And for weight loss.
+
+```{r}
+models <- lapply(variables, function(v){
+    reformulate(c("age", "sex", "bmi", v), "subset") %>% glm(data=data, family="binomial")
+})
+
+wl_tests <- lapply(models, function(m) {
+    coefs <- summary(m)$coefficients
+    data.table(variable=rownames(coefs)[5], coef=coefs[5, 1], se=coefs[5, 2], p=coefs[5, 4])
+}) %>% rbindlist()
+wl_tests[, "padj" := p.adjust(p, method="fdr")]
+wl_tests[order(p)]
+```

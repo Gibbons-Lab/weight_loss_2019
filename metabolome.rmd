@@ -1,5 +1,5 @@
 ---
-title: "meteome"
+title: "metabolome"
 output: html_notebook
 ---
 
@@ -12,7 +12,7 @@ theme_set(theme_minimal())
 
 # meteome analysis
 
-Let's start by loading some previously preprocessed meteome data.
+Let's start by loading some previously preprocessed metabolome data.
 
 ```{r}
 mets <- readRDS("/proj/gibbons/toadnet/data/metabolome.rds")
@@ -22,10 +22,19 @@ mets
 This includes data for all of Arivale so let's filter the sample we are interested in:
 
 ```{r}
-manifest <- fread("data/manifest.csv")[has_close_microbiome == T]
-manifest[, public_client_id := paste0("0", as.character(public_client_id))]
+cohort <- rbind(
+    fread("no_weight_loss.csv", colClasses=c(public_client_id="character")),
+    fread("successful_weight_loss.csv", colClasses=c(public_client_id="character"))
+)[since_baseline == 0]
+cohort[, "subset" := "controls"]
+cohort[weight_change_relative < 0, "subset" := "weight loss"]
+cohort[, subset := factor(subset)]
+
+manifest <- cohort
 met_samples <- colData(mets) %>% as.data.table()
 matched <- met_samples[manifest, on = c("public_client_id", "days_in_program"), nomatch=0]
+matched[, "subset" := "controls"]
+matched[weight_change_relative < 0, subset:="weight loss"]
 sdata <- as.data.frame(matched)
 sdata$subset <- factor(sdata$subset)
 sdata$sex <- factor(sdata$sex)
@@ -47,7 +56,7 @@ tests <- association(
     ps, 
     presence_threshold = -4,
     min_abundance = -2,
-    in_samples = 0.8,
+    in_samples = 0.5,
     confounders = c("age", "bmi", "sex"),
     variables = "subset",
     taxa_rank = "metabolite",
@@ -57,7 +66,7 @@ bmi <- association(
     ps, 
     presence_threshold = -4,
     min_abundance = -2,
-    in_samples = 0.8,
+    in_samples = 0.5,
     confounders = c("age", "sex"),
     variables = "bmi",
     taxa_rank = "metabolite",

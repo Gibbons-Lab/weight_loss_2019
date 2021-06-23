@@ -15,7 +15,7 @@ theme_set(theme_minimal())
 We will start by reading the data.
 
 ```{r}
-gmap <- c(control = "no weight loss", `weight loss` = "successful weight loss")
+gmap <- c(control = "no weight loss", `weight loss` = "weight loss")
 
 srm <- read_excel("data/innovator_SRM_02122020.xlsx", sheet = "data") %>% setDT()
 prots <- read_excel("data/innovator_SRM_02122020.xlsx", sheet = "proteins") %>% setDT()
@@ -35,7 +35,7 @@ manifest <- fread("data/manifest.csv")
 classes <- c(microbiome_id = "character")
 cohort <- list(
     no_loss = fread("no_weight_loss.csv", colClasses = classes)[, "group" := "no weight loss"],
-    loss = fread("successful_weight_loss.csv", colClasses = classes)[, "group" := "successful weight loss"]
+    loss = fread("successful_weight_loss.csv", colClasses = classes)[, "group" := "weight loss"]
 ) %>% rbindlist()
 cohort[, "state" := c("before", "after")[order(days_in_program)], by = "public_client_id"]
 cohort
@@ -89,7 +89,7 @@ ggplot(norm[state == "after"], aes(x=group, y=log_abundance)) +
 
 And we can look at the deltas:
 
-```{r, fig.width = 6, fig.height = 4}
+```{r, fig.width = 12, fig.height = 3.5}
 norm[, delta := (log_abundance[state == "after"] - log_abundance[state == "before"]) / span_days * 30.5, by = c("public_client_id", "id")]
 
 stats <- norm[state == "after", model_stats(.SD, delta=T), by = "gene name"]
@@ -100,12 +100,12 @@ sig <- stats[padj < 0.1, `gene name`]
 
 ggplot(norm[state == "before" & `gene name` %in% sig], aes(x=group, y=delta)) + 
     geom_hline(yintercept = 0, lty = "dashed", color = "gray20") +
-    geom_jitter(width=0.2, alpha = 0.5) + 
-    facet_wrap(~ `gene name`, scale="free_y") +
+    geom_jitter(width=0.2) + 
+    facet_wrap(~ `gene name`, scale="free_y", nrow=1) +
     stat_summary(fun.y = median, geom = "point", size = 2, stroke=1, color = "blue", fill="white", shape = 23) +
     labs(x = "", y="Δprotein [log2 fold-change/month]") +
     theme(axis.text.x = element_text(angle = 30, vjust = 1, hjust=1))
-ggsave("figures/deltas.png", dpi=300, width=6, height=4)
+ggsave("figures/deltas.png", dpi=300, width=12, height=3.5)
 ```
 
 ```{r, fig.width=3, fig.height=3.5}

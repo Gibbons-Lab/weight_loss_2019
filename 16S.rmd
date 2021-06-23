@@ -10,13 +10,20 @@ library(mbtools)
 ```
 
 ```{r}
-classes <- c(public_client_id = "character", vendor_observation_id = "character")
-cohort <- fread("data/manifest.csv", colClasses=classes)[has_close_microbiome == T]
+classes <- c(public_client_id = "character", microbiome_id = "character")
+cohort <- rbind(
+    fread("no_weight_loss.csv", colClasses=classes),
+    fread("successful_weight_loss.csv", colClasses=classes)
+)[since_baseline == 0]
+cohort[, "subset" := "controls"]
+cohort[weight_change_relative < 0, "subset" := "weight loss"]
+cohort[, subset := factor(subset)]
+cohort[, "vendor_observation_id" := microbiome_id]
 ```
 
 ```{r}
 ps <- readRDS("/proj/arivale/microbiome/16S_processed/phyloseq.rds")
-ps <- subset_samples(ps, vendor_observation_id %in% cohort[has_close_microbiome == TRUE, vendor_observation_id])
+ps <- subset_samples(ps, vendor_observation_id %in% cohort[, vendor_observation_id])
 ps
 ```
 
@@ -25,10 +32,11 @@ genus <- speedyseq::tax_glom(ps, "Genus")
 
 sdata <- merge(
     as(sample_data(genus), "data.frame"),
-    as.data.frame(cohort[has_close_microbiome == TRUE]),
-    by = c("vendor_observation_id", "sex", "age")
+    as.data.frame(cohort),
+    by = c("vendor_observation_id", "sex")
 )
-rownames(sdata) <- sample_names(ps)
+rownames(sdata) <- sdata$id
+sdata$age <- sdata$age.y
 sdata$subset <- factor(sdata$subset)
 sdata$sex <- factor(sdata$sex)
 sample_data(genus) <- sdata
@@ -38,22 +46,24 @@ sample_data(genus) <- sdata
 tests <- association(
     genus, 
     presence_threshold = 0.5,
-    min_abundance = 2,
-    in_samples = 0.8,
+    min_abundance = 1,
+    in_samples = 0.5,
     confounders = c("age", "bmi", "sex"),
     variables = "subset",
     taxa_rank = "Genus",
-    method = "deseq2"
+    method = "deseq2",
+    shrink=F
 )
 bmi <- association(
     genus, 
     presence_threshold = 0.5,
-    min_abundance = 2,
-    in_samples = 0.8,
+    min_abundance = 1,
+    in_samples = 0.5,
     confounders = c("age", "sex"),
     variables = "bmi",
     taxa_rank = "Genus",
-    method = "deseq2"
+    method = "deseq2",
+    shrink=F
 )
 tests <- rbind(tests, bmi)
 tests <- merge.data.table(tests, as.data.frame(as(tax_table(genus), "matrix")), on="Genus")

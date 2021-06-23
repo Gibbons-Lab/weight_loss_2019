@@ -1,0 +1,126 @@
+---
+title: "Available samples for Cui lab colab"
+output: html_notebook
+---
+
+First, let's start by reading in a list of all blood samples at ISB and annotating them with their
+public ids.
+
+```{r}
+library(arivale.data.interface)
+library(data.table)
+library(cli)
+
+proteomics <- get_snapshot("proteomics_raw")
+isb <- fread("data/isb_blood_samples.csv")
+isb[, sample_id := toupper(sample_id)]
+isb <- proteomics[, .(public_client_id, sample_id, days_in_program)][isb, on = "sample_id"]
+isb <- isb[!is.na(public_client_id)]
+isb
+```
+
+Let's add in the APOE genotype
+
+```{r}
+genetics <- get_snapshot("genetics_snp")[, .(
+    public_client_id, genome_id, genome_vendor, 
+    genotyping_technology, rs7412, rs429358)
+]
+
+genetics <- unique(genetics)
+genetics[rs7412 == "Unknown" | rs429358 == "Unknown", rs7412 := NA]
+genetics <- genetics[complete.cases(genetics)]
+isb <- isb[genetics, on="public_client_id", nomatch=0]
+
+alleles <- paste0(isb$rs429358, isb$rs7412)
+isb$apoe <- "APOE4 negative"
+isb$apoe[alleles == "CTCT"] <- "ambiguous APOE4"
+isb$apoe[alleles %in% c("CCCT", "CTCC")] <- "heterozygous APOE4"
+isb$apoe[alleles == "CCCC"] <- "homozygous APOE4"
+isb$apoe <- factor(isb$apoe, levels=c("APOE4 negative", "ambiguous APOE4", 
+                                      "heterozygous APOE4", "homozygous APOE4"))
+```
+
+And let's add some phenotype and self-classification:
+
+```{r}
+clients <- get_snapshot("clients")[, .(public_client_id, sex, age, ethnicity=race,  latest_program)]
+sci_wellness <- clients[
+    latest_program == "Arivale-Providence Feasibility Study of Scientific Wellness",
+    unique(public_client_id)
+]
+weights <- get_snapshot("weight")[, .(public_client_id, days_in_program, BMI_CALC)]
+
+isb <- weights[isb, on=c("public_client_id", "days_in_program"), roll="nearest", mult="first", nomatch=0]
+isb <- isb[clients, on="public_client_id", nomatch = 0]
+```
+
+Let's also get the microbiome samples.
+
+```{r}
+mb <- get_snapshot("microbiome_diversity")[, .(
+    public_client_id, days_in_program, vendor_observation_id, vendor_dashboard, diversity_shannon
+)]
+setkey(mb, "public_client_id")
+```
+
+We will also get the COCOA sample list and annotate them and remove those from the data sets
+
+```{r}
+cocoa <- fread("data/cocoa_samples_txt.txt", colClasses = "character")
+cocoa <- mb[cocoa, on=c(vendor_observation_id = "SERIAL")]
+
+isb <- isb[!public_client_id %chin% cocoa$public_client_id]
+mb <- mb[!vendor_observation_id %chin% cocoa$vendor_observation_id]
+```
+
+Let's build a combined set of blood and microbiome samples matched by the closest samples
+
+```{r}
+mb[, "days_in_program_stool" := days_in_program]
+isb_mb <- mb[isb, on=c("public_client_id", "days_in_program"), roll="nearest", mult="first", nomatch=0]
+```
+
+Let's get the info for the blood samples:
+
+```{r}
+sel <- isb[public_client_id %chin% sci_wellness]
+cli_h1("Sex")
+sel[, table(sex)]
+cli_h1("Etnicity")
+sel[, sort(table(ethnicity), T)]
+cli_h1("Age")
+sel[, summary(age)]
+cli_h1("APOE4 status")
+sel[, table(apoe)]
+cli_h1("APOE4 SNPs")
+sel[, table(rs429358, rs7412)]
+fwrite(sel, "data/cui_samples.csv")
+```
+
+```{r}
+sel <- isb_mb[public_client_id %chin% sci_wellness]
+cli_h1("Sex")
+sel[, table(sex)]
+cli_h1("Etnicity")
+sel[, sort(table(ethnicity), T)]
+cli_h1("Age")
+sel[, summary(age)]
+cli_h1("APOE4 status")
+sel[, table(apoe)]
+cli_h1("APOE4 SNPs")
+sel[, table(rs429358, rs7412)]
+```
+
+Some figures
+
+```{r}
+library(ggplot2)
+library(magrittr)
+theme_minimal() %>% theme_set()
+
+ggplot(sel, aes(x=age)) +
+    geom_histogram(aes(y=..density..)) +
+    geom_density() +
+    labs(x="age [years]")
+```

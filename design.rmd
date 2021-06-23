@@ -124,6 +124,7 @@ matched <- matched[!public_client_id %chin% novo$public_client_id]
 Let's look at trajectories:
 
 ```{r, fig.width=4, fig.height=3}
+library(ggplot2)
 theme_set(theme_minimal())
 
 matched[, "since_baseline" := days_in_program - min(days_in_program), by="public_client_id"]
