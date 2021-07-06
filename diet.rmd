@@ -22,6 +22,11 @@ variables <- c(diet_variables, lifestyle_variables)
 qs <- qs[, c("public_client_id", variables), with=FALSE]
 qs[, "complete" := apply(qs, 1, function(x) sum(!is.na(x))/length(x))]
 qs <- qs[order(-complete)][!duplicated(public_client_id)]
+
+scales <- apply(qs[, variables, with=F], 2, function(x) unique(x, na.rm=T) %>% 
+          sort() %>% paste(collapse = ", ")) %>% data.table()
+scales <- data.table(quantity=variables, scale=scales)
+fwrite(scales, "data/diet_scales.csv")
 ```
 
 All of those should be on a ordinal scale so we will conver them to the corresponding rank values.
@@ -36,7 +41,6 @@ for (v in variables) {
 
 qs
 ```
-
 Now let's merge in our selected cohort.
 
 ```{r}
@@ -51,18 +55,43 @@ cohort[, subset := factor(subset)]
 data <- qs[cohort, on="public_client_id"]
 ```
 
+Let's visualize what we have.
+
+```{r, fig.width=16, fig.height=6}
+library(pheatmap)
+library(viridisLite)
+
+df <- as.data.frame(data[, variables, with=F])
+rownames(df) <- data$public_client_id
+anns <- data.frame(BMI=data$bmi, subset=data$subset, row.names=data$public_client_id)
+pheatmap(t(df), color=viridis(256), annotation_col = anns, show_colnames=FALSE)
+
+# Save image
+pheatmap(t(df), color=viridis(256), annotation_col = anns, show_colnames=FALSE,
+         filename="figures/diets.png", width=16, height=6, dpi=300)
+```
+
 Finally we can run the models for BMI.
 
 ```{r}
 models <- lapply(variables, function(v){
-    reformulate(c("age", "sex", v), "bmi") %>% glm(data=data)
+    model <- reformulate(c("age", "sex", "bmi"), v) %>% glm(data=data)
+    attr(model, "feature") <- v
+    model
 })
 
 bmi_tests <- lapply(models, function(m) {
     coefs <- summary(m)$coefficients
-    data.table(variable=rownames(coefs)[4], coef=coefs[4, 1], se=coefs[4, 2], p=coefs[4, 4])
+    data.table(
+        feature=attr(m, "feature"), 
+        coef=coefs[4, 1], 
+        se=coefs[4, 2], 
+        t=coefs[4, 3], 
+        p=coefs[4, 4]
+    )
 }) %>% rbindlist()
 bmi_tests[, "padj" := p.adjust(p, method="fdr")]
+bmi_tests[, "variable" := "bmi"]
 bmi_tests[order(p)]
 ```
 
@@ -70,13 +99,58 @@ And for weight loss.
 
 ```{r}
 models <- lapply(variables, function(v){
-    reformulate(c("age", "sex", "bmi", v), "subset") %>% glm(data=data, family="binomial")
+    model <- reformulate(c("age", "sex", "bmi", "subset"), v) %>% 
+             glm(data=data)
+    attr(model, "feature") <- v
+    model
 })
 
 wl_tests <- lapply(models, function(m) {
     coefs <- summary(m)$coefficients
-    data.table(variable=rownames(coefs)[5], coef=coefs[5, 1], se=coefs[5, 2], p=coefs[5, 4])
+    data.table(
+        feature=attr(m, "feature"), 
+        coef=coefs[5, 1], 
+        se=coefs[5, 2], 
+        t=coefs[5, 3], 
+        p=coefs[5, 4]
+    )
 }) %>% rbindlist()
 wl_tests[, "padj" := p.adjust(p, method="fdr")]
+wl_tests[, "variable" := "subset"]
 wl_tests[order(p)]
+```
+
+```{r}
+tests <- rbind(bmi_tests, wl_tests)
+```
+
+```{r, fig.width=5, fig.height=3}
+library(ggplot2)
+theme_minimal() %>% theme_set()
+
+wide <- dcast(tests, feature ~ variable, value.var=c("t", "padj"), fill=0)
+wide[, "sig" := "none"]
+wide[padj_bmi < 0.05, "sig" := "BMI"]
+wide[padj_subset < 0.05, "sig" := "weight loss"]
+wide[padj_bmi < 0.05 & padj_subset < 0.05, "sig" := "both"]
+wide[, "sig" := factor(sig, levels=c("none", "BMI", "weight loss", "both"))]
+ggplot(wide, aes(x=t_bmi, y=t_subset, color=sig)) +
+    geom_vline(xintercept = 0, color="gray30", lty="dashed") +
+    geom_hline(yintercept = 0, color="gray30", lty="dashed") +
+    geom_point() + stat_smooth(method="glm", aes(group = 1)) +
+    labs(x = "t statistic BMI", y = "t statistic weight loss") +
+    scale_color_manual(values=c(none = "black", BMI = "royalblue", `weight loss`="orange", both = "red"))
+ggsave("figures/diet_t.png", dpi=300, width=5, height=3)
+cor.test(~ t_bmi + t_subset, data=wide)
+```
+
+## Overall explained variance
+
+```{r}
+library(vegan)
+
+m <- as(data[, variables, with=F], "matrix")
+m[is.na(m)] <- min(as.numeric(m), na.rm=T)
+perm <- adonis(m ~ age + sex + bmi + subset, data=data, method="euclidean")
+perm
 ```

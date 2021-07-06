@@ -44,8 +44,10 @@ mets <- mets[, mets$sample_id %in% matched$sample_id]
 taxa <- matrix(rownames(mets), ncol=1)
 colnames(taxa) <- "metabolite"
 rownames(taxa) <- rownames(mets)
+mat <- log2(t(assay(mets)))
+mat[is.na(mat)] <- -9
 ps <- phyloseq(
-    otu_table(log2(t(assay(mets))), taxa_are_rows = FALSE),
+    otu_table(mat, taxa_are_rows = FALSE),
     sample_data(sdata),
     tax_table(taxa)
 )
@@ -54,26 +56,27 @@ ps <- phyloseq(
 ```{r}
 tests <- association(
     ps, 
-    presence_threshold = -4,
-    min_abundance = -2,
+    presence_threshold = -5,
+    min_abundance = -3,
     in_samples = 0.5,
     confounders = c("age", "bmi", "sex"),
     variables = "subset",
-    taxa_rank = "metabolite",
+    taxa_rank = NA,
     method = "lm"
 )
 bmi <- association(
     ps, 
-    presence_threshold = -4,
-    min_abundance = -2,
+    presence_threshold = -5,
+    min_abundance = -3,
     in_samples = 0.5,
     confounders = c("age", "sex"),
     variables = "bmi",
-    taxa_rank = "metabolite",
+    taxa_rank = NA,
     method = "lm"
 )
 tests <- rbind(tests, bmi)
 rowData(mets)$metabolite <- rownames(mets)
+tests[, "metabolite" := variant]
 tests <- merge.data.table(tests, rowData(mets), on="metabolite")
 tests
 ```

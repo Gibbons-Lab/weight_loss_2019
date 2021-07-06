@@ -45,8 +45,8 @@ sample_data(genus) <- sdata
 ```{r}
 tests <- association(
     genus, 
-    presence_threshold = 0.5,
-    min_abundance = 1,
+    presence_threshold = 1,
+    min_abundance = 10,
     in_samples = 0.5,
     confounders = c("age", "bmi", "sex"),
     variables = "subset",
@@ -56,8 +56,8 @@ tests <- association(
 )
 bmi <- association(
     genus, 
-    presence_threshold = 0.5,
-    min_abundance = 1,
+    presence_threshold = 1,
+    min_abundance = 10,
     in_samples = 0.5,
     confounders = c("age", "sex"),
     variables = "bmi",
@@ -86,4 +86,15 @@ ggplot(wide, aes(x=t_bmi, y=t_subset, color=sig)) +
     scale_color_manual(values=c(none = "black", BMI = "royalblue", `weight loss`="orange", both = "red"))
 ggsave("figures/16S_genus_t.png", dpi=300, width=5, height=3)
 cor.test(~ t_bmi + t_subset, data=wide, method="spearman")
+```
+
+## Overall explained variance
+
+```{r}
+library(vegan)
+
+m <- as(otu_table(genus), "matrix")
+m[is.na(m)] <- min(as.numeric(m), na.rm=T)
+perm <- adonis(m ~ age + sex + bmi + subset, data=as(sample_data(genus), "data.frame"), method="bray")
+perm
 ```

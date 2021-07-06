@@ -41,8 +41,8 @@ taxa <- matrix(rownames(prots), ncol=1)
 colnames(taxa) <- "protein"
 rownames(taxa) <- rownames(prots)
 mat <- as.matrix(t(assay(prots)))
-complete <- apply(mat, 2, function(x) all(!is.na(x)))
-mat <- mat[, complete]
+complete <- apply(mat, 2, function(x) sum(!is.na(x)))
+mat[is.na(mat)] <- -9
 ps <- phyloseq(
     otu_table(mat, taxa_are_rows = FALSE),
     sample_data(sdata),
@@ -58,7 +58,7 @@ tests <- association(
     in_samples = 0.5,
     confounders = c("age", "bmi", "sex"),
     variables = "subset",
-    taxa_rank = "protein",
+    taxa_rank = NA,
     method = "lm"
 )
 bmi <- association(
@@ -68,11 +68,12 @@ bmi <- association(
     in_samples = 0.5,
     confounders = c("age", "sex"),
     variables = "bmi",
-    taxa_rank = "protein",
+    taxa_rank = NA,
     method = "lm"
 )
 tests <- rbind(tests, bmi)
 rowData(prots)$protein <- rownames(prots)
+tests[, "protein" := variant]
 tests <- merge.data.table(tests, rowData(prots), on="protein")
 tests
 ```
