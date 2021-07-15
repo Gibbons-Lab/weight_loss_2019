@@ -41,10 +41,11 @@ cohort[, "state" := c("before", "after")[order(days_in_program)], by = "public_c
 cohort
 ```
 
-And let's combine the two:
+And let's combine the two. We will only keep the first transition for each protein to have the same n for each probe.
 
 ```{r}
 merged <- cohort[srm, on = c("public_client_id", "group", "state")]
+
 norm <- copy(merged)
 norm[, "log_abundance" := log2(abundance)]
 norm[, "log_abundance_norm" := log_abundance - mean(log_abundance), by = c("public_client_id", "state")]
@@ -98,10 +99,14 @@ stats[, padj_bmi := p.adjust(pval_bmi, method = "fdr")]
 stats[order(pval)]
 sig <- stats[padj < 0.1, `gene name`]
 
+npep <- merged[, uniqueN(`peptide seq`), by="gene name"]
+labels <- npep[, paste0(`gene name`, " [", V1, "]")]
+names(labels) <- npep[, `gene name`]
+
 ggplot(norm[state == "before" & `gene name` %in% sig], aes(x=group, y=delta)) + 
     geom_hline(yintercept = 0, lty = "dashed", color = "gray20") +
     geom_jitter(width=0.2) + 
-    facet_wrap(~ `gene name`, scale="free_y", nrow=1) +
+    facet_wrap(~ `gene name`, scale="free_y", nrow=1, labeller=as_labeller(labels)) +
     stat_summary(fun.y = median, geom = "point", size = 2, stroke=1, color = "blue", fill="white", shape = 23) +
     labs(x = "", y="Δprotein [log2 fold-change/month]") +
     theme(axis.text.x = element_text(angle = 30, vjust = 1, hjust=1))

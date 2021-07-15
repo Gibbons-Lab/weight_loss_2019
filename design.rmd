@@ -174,17 +174,6 @@ mbcontrol[, "subset" := "controls"]
 fwrite(rbind(mblost, mbcontrol), "dna_genotek.csv")
 ```
 
-Let's look at trajectories:
-
-```{r, fig.width=4, fig.height=3}
-cohort <- rbind(lost, controls)
-
-ggplot(cohort, aes(x=since_baseline, y=bmi, group=public_client_id)) +
-    geom_line(alpha=0.5, color="seagreen4") +
-    geom_point() +
-    labs(x="time in program [days]", y="BMI [kg/m²]")
-ggsave("figures/bmi_trajectories.png", width=4, height=3, dpi=300)
-```
 
 And for the blood samples:
 

@@ -50,6 +50,8 @@ for (p in rates[!is.na(phylum), unique(phylum)]) {
 }
 print("NA")
 glm(log(rate) ~ age + bmi + subset, data=rates[is.na(phylum)]) %>% summary()
+print("all")
+glm(log(rate) ~ age + bmi + subset, data=rates) %>% summary()
 ```
 
 ```{r}
