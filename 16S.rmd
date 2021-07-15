@@ -67,6 +67,7 @@ bmi <- association(
 )
 tests <- rbind(tests, bmi)
 tests <- merge.data.table(tests, as.data.frame(as(tax_table(genus), "matrix")), on="Genus")
+fwrite(tests[order(padj)], "data/tests_16S_genus.csv")
 tests
 ```
 

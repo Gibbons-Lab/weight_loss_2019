@@ -119,6 +119,7 @@ bmi <- association(
 
 tests <- rbind(tests, bmi)
 tests <- anns[tests, on="ko_term"]
+fwrite(tests[order(padj)], "data/tests_metagenome_ko.csv")
 tests[variable == "subset"][order(padj)]
 ```
 

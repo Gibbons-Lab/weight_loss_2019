@@ -122,6 +122,7 @@ wl_tests[order(p)]
 
 ```{r}
 tests <- rbind(bmi_tests, wl_tests)
+fwrite(tests[order(padj)], "data/tests_diet.csv")
 ```
 
 ```{r, fig.width=5, fig.height=3}

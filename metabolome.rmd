@@ -78,6 +78,7 @@ tests <- rbind(tests, bmi)
 rowData(mets)$metabolite <- rownames(mets)
 tests[, "metabolite" := variant]
 tests <- merge.data.table(tests, rowData(mets), on="metabolite")
+fwrite(tests[order(padj)], "data/tests_metabolites.csv")
 tests
 ```
 

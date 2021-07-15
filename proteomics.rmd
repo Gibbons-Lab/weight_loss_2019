@@ -75,6 +75,7 @@ tests <- rbind(tests, bmi)
 rowData(prots)$protein <- rownames(prots)
 tests[, "protein" := variant]
 tests <- merge.data.table(tests, rowData(prots), on="protein")
+fwrite(tests[order(padj)], "data/tests_proteomics.csv")
 tests
 ```
 
