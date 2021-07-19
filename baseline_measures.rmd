@@ -1,0 +1,138 @@
+---
+title: "Cohort characteristics"
+output: html_notebook
+---
+
+```{r}
+library(mbtools)
+theme_set(theme_minimal())
+```
+
+```{r}
+cohort <- rbind(
+    fread("no_weight_loss.csv", colClasses=c(public_client_id="character")),
+    fread("successful_weight_loss.csv", colClasses=c(public_client_id="character"))
+)[since_baseline == 0]
+cohort[, "subset" := "controls"]
+cohort[weight_change_relative < 0, "subset" := "weight loss"]
+cohort[, subset := factor(subset)]
+```
+
+```{r}
+library(arivale.data.interface)
+chem <- get_snapshot("chemistries", clean=T)
+chem <- chem[cohort, on=c("public_client_id", "days_in_program"), roll="nearest"]
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(cohort, aes(x=subset, y=bmi, color=subset)) + 
+    geom_jitter(width=0.2) +
+    labs(x="", y=expression(paste("BMI [", kg/m^2, "]"))) +
+    stat_summary(fun = median, geom = "point", size = 2, 
+                 stroke=1, fill="white", shape = 23) +
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
+t.test(bmi ~ subset, data=cohort)
+ggsave("figures/bmi.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(cohort, aes(x=subset, y=age, color=subset)) + 
+    geom_jitter(width=0.2) +
+    stat_summary(fun = median, geom = "point", size = 2, 
+                 stroke=1, fill="white", shape = 23) +
+    labs(x="", y="age [years]") +
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
+t.test(age ~ subset, data=cohort)
+ggsave("figures/age.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(cohort, aes(x=subset, y=weight_change_relative, color=subset)) + 
+    geom_jitter(width=0.2) +
+    stat_summary(fun = median, geom = "point", size = 2, 
+                 stroke=1, fill="white", shape = 23) +
+    labs(x="", y="rel. Δweight [%/month]") +
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
+t.test(weight_change_relative ~ subset, data=cohort)
+ggsave("figures/weight_change.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(chem, aes(x=subset, y=ADIPONECTIN__SERUM, color=subset)) + 
+    geom_jitter(width=0.2) +
+    stat_summary(fun = median, geom = "point", size = 2, 
+                 stroke=1, fill="white", shape = 23) +
+    labs(x="", y="serum adiponectin [mg/L]") +
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
+t.test(ADIPONECTIN__SERUM ~ subset, data=chem)
+ggsave("figures/adiponectin.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(chem, aes(x=subset, y=HDL_CHOL_DIRECT, color=subset)) + 
+    geom_jitter(width=0.2) +
+    stat_summary(fun = median, geom = "point", size = 2, 
+                 stroke=1, fill="white", shape = 23) +
+    labs(x="", y="serum HDL [mg/L]") +
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
+t.test(HDL_CHOL_DIRECT ~ subset, data=chem)
+ggsave("figures/hdl.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(chem, aes(x=subset, y=LDL_CHOL_CALCULATION, color=subset)) + 
+    geom_jitter(width=0.2) +
+    stat_summary(fun = median, geom = "point", size = 2, 
+                 stroke=1, fill="white", shape = 23) +
+    labs(x="", y="serum LDL [mg/L]") +
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
+t.test(LDL_CHOL_CALCULATION ~ subset, data=chem)
+ggsave("figures/ldl.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(chem, aes(x=subset, y=GLUCOSE, color=subset)) + 
+    geom_jitter(width=0.2) +
+    stat_summary(fun = median, geom = "point", size = 2, 
+                 stroke=1, fill="white", shape = 23) +
+    labs(x="", y="serum glucose [mg/L]") +
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
+t.test(GLUCOSE ~ subset, data=chem)
+ggsave("figures/glucose.svg", width=2, height=3)
+```
+
+```{r, fig.width=2, fig.height=3}
+ggplot(chem, aes(x=subset, y=HOMA_IR, color=subset)) + 
+    geom_jitter(width=0.2) +
+    stat_summary(fun = median, geom = "point", size = 2, 
+                 stroke=1, fill="white", shape = 23) +
+    labs(x="", y="HOMA IR [index]") +
+    guides(color=F) + theme(axis.text.x = element_text(angle=30, hjust=1, vjust=1))
+t.test(HOMA_IR ~ subset, data=chem)
+ggsave("figures/homa_ir.svg", width=2, height=3)
+```
+
+```{r}
+library(pheatmap)
+
+measures <- c("bmi", "age", "weight_change_relative", 
+              "HOMA_IR", "GLUCOSE", "LDL_CHOL_CALCULATION", 
+              "HDL_CHOL_DIRECT", "ADIPONECTIN__SERUM")
+
+legends <- c("BMI [kg/m²]", "age [years]", "rel. Δweight [%/month]", "HOMA IR [index]", "serum glucose [mg/L]", "serum LDL [mg/L]", "serum HDL [mg/L]", "serum adiponectin [mg/L]")
+
+abundances <- chem[, measures, with = FALSE]
+names(abundances) <- legends
+tests <- cor.mtest(abundances, conf.level=0.95)
+corrs <- cor(abundances)
+svglite::svglite("figures/baseline_correlations.svg", width=5, height=4)
+corrplot(corrs, p.mat = tests$p, method = 'circle', diag = FALSE,
+         sig.level = c(0.001, 0.01, 0.05), pch.cex = 0.75, 
+         insig = 'label_sig', order = 'AOE', tl.col = "black", addgrid.col=NA,
+         cl.offset=1)
+dev.off()
+corrplot(corrs, p.mat = tests$p, method = 'circle', diag = FALSE,
+         sig.level = c(0.001, 0.01, 0.05), pch.cex = 0.75, 
+         insig = 'label_sig', order = 'AOE', tl.col = "black", addgrid.col=NA,
+         cl.offset=1)
+```
