@@ -31,7 +31,6 @@ srm
 Let;s join that with our manifest.
 
 ```{r}
-manifest <- fread("data/manifest.csv")
 classes <- c(microbiome_id = "character")
 cohort <- list(
     no_loss = fread("no_weight_loss.csv", colClasses = classes)[, "group" := "no weight loss"],

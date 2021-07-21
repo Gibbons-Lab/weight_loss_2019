@@ -38,3 +38,4 @@ Here are the analyses we ran and the rendered outputs:
 8. Associations between species abundances and weight loss [notebook](species.rmd) | [output](https://gibbons-lab.github.io/mbtools/species.html)
 9. Associations between gene clusters and weight loss [notebook](functional.rmd) | [output](https://gibbons-lab.github.io/mbtools/functional.html)
 10. Analysis of bacterial contig replication rates [notebook](replication_rates.rmd) | [output](https://gibbons-lab.github.io/mbtools/replication_rates.html)
+11. SRA submission [notebook](sra.rmd) | [output](https://gibbons-lab.github.io/mbtools/sra.html)

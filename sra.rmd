@@ -1,0 +1,32 @@
+---
+title: "SRA submisison"
+output: html_notebook
+---
+
+This script prepares the submisssion to SRA. We will use `mbtools` to facilitate this.
+
+```{r}
+library(mbtools)
+
+files <- find_read_files(
+    "data/raw", 
+    pattern = mbtools:::simple_pattern, annotations = mbtools:::simple_annotations)
+```
+
+And let's have a look
+
+```{r}
+files
+```
+
+Not much going on here so we will also load the metadata.
+
+```{r}
+classes <- c(microbiome_id = "character")
+cohort <- list(
+    no_loss = fread("no_weight_loss.csv", colClasses = classes)[, "group" := "no weight loss"],
+    loss = fread("successful_weight_loss.csv", colClasses = classes)[, "group" := "weight loss"]
+) %>% rbindlist()
+cohort[, "state" := c("before", "after")[order(days_in_program)], by = "public_client_id"]
+cohort
+```

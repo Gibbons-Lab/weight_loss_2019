@@ -31,18 +31,22 @@ chem <- chem[cohort, on=c("public_client_id", "days_in_program"), roll="nearest"
 ```
 
 ```{r, fig.width=4, fig.height=3}
+tt <- cohort[, t.test(bmi[since_baseline > 0], bmi[since_baseline == 0], paired=TRUE)]
+
 ggplot(cohort, aes(x=since_baseline, y=bmi, group=public_client_id, color=additional_assays)) +
     geom_line(alpha=0.5, color="seagreen4") +
     geom_point() +
     labs(x="time in program [days]", y="BMI [kg/m²]") +
     guides(color="none") +
-    scale_color_manual(values=c("black", "tomato"))
+    scale_color_manual(values=c("black", "tomato")) +
+    annotate("text", label = sprintf("Δ=%.2g, p=%.2g", tt$estimate, tt$p.value), 
+             x=Inf, y=Inf, hjust=1, vjust=7)
 ggsave("figures/bmi_trajectories.png", width=4, height=3, dpi=300)
 
 cohort[, t.test(bmi[since_baseline == 0], bmi[since_baseline > 0], paired=TRUE)]
 ```
 
-```{r}
+```{r, fig.width=8, fig.height=8}
 measures <- c("ADIPONECTIN__SERUM", "HDL_CHOL_DIRECT", "LDL_CHOL_CALCULATION", 
               "GLUCOSE", "HOMA_IR", "INSULIN", "CRP_HIGH_SENSITIVITY", 
               "GLYCOHEMOGLOBIN_A1C")
@@ -53,24 +57,26 @@ select <- chem[, c("public_client_id", "since_baseline", "additional_assays", me
 names(select) <- c("public_client_id", "since_baseline", "additional_assays", legends)
 select <- melt(select, id.vars=c("public_client_id", "since_baseline", "additional_assays"), value.name="value", variable.name="measure")
 
-ggplot(select, aes(x=since_baseline, y=value, group=public_client_id, color=additional_assays)) +
+stats <- function(value, since_baseline) {
+    s <- t.test(value[since_baseline > 0], value[since_baseline == 0], paired=TRUE)
+    list(t=s$statistic, p=s$p.value, delta_mu=s$estimate)
+}
+
+res <- select[, stats(value, since_baseline), by="measure"]
+res[, "label" := sprintf("Δ=%.2g, p=%.2g", delta_mu, p)]
+
+pl <- ggplot(select, aes(x=since_baseline, y=value, group=public_client_id, color=additional_assays)) +
     geom_line(alpha=0.5, color="seagreen4") +
     geom_point() +
     labs(x="time in program [days]", y="") +
     facet_wrap(~ measure, scales="free_y") +
     guides(color="none") +
-    scale_color_manual(values=c("black", "tomato")) 
-ggsave("figures/other_trajectories.svg", width=8, height=8, dpi=300)
-```
-
-And the corresponding paired tests:
-
-```{r}
-stats <- function(value, since_baseline) {
-    s <- t.test(value[since_baseline == 0], value[since_baseline != 0], paired=TRUE)
-    list(t=s$statistic, p=s$p.value, delta_mu=s$estimate)
-}
-
-res <- select[, stats(value, since_baseline), by="measure"]
-res[order(p)]
+    scale_color_manual(values=c("black", "tomato"))
+pl <- pl + geom_text(data = res, 
+                     mapping = aes(x = Inf, y = Inf, label = label, group=1),
+                     color = "black",
+                     hjust = 1,
+                     vjust = 2.5)
+ggsave("figures/other_trajectories.png", width=8, height=8, dpi=300)
+pl
 ```

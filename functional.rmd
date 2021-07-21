@@ -175,7 +175,7 @@ ggplot(sig, aes(x = bmi, y = reads)) +
     stat_smooth(method="glm", aes(group = 1), col = "black") +
     facet_wrap(~ ko_term, scales = "free_y") + 
     labs(x="BMI", y="normalized reads") + guides(color = F) +
-ggsave("figures/gene_bmi.png", dpi=300, width=6, height=4)
+ggsave("figures/gene_bmi.png", dpi=300, width=12, height=10)
 
 ggplot(sig, aes(x = subset, y = reads, color=subset)) + 
     geom_jitter(width=0.2) +
@@ -183,7 +183,7 @@ ggplot(sig, aes(x = subset, y = reads, color=subset)) +
     stat_summary(fun.y = "mean", geom = "point", pch=23, stroke = 1, size=3, fill = "white") +
     facet_wrap(~ ko_term, scales = "free_y") + 
     labs(x="", y="normalized reads") + guides(color = F) +
-ggsave("figures/gene_abundance.png", dpi=300, width=6, height=4)
+ggsave("figures/gene_abundance.png", dpi=300, width=12, height=10)
 ```
 
 ```{r, fig.width=5, fig.height=5}
