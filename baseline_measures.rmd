@@ -13,7 +13,7 @@ cohort <- rbind(
     fread("no_weight_loss.csv", colClasses=c(public_client_id="character")),
     fread("successful_weight_loss.csv", colClasses=c(public_client_id="character"))
 )[since_baseline == 0]
-cohort[, "subset" := "controls"]
+cohort[, "subset" := "no weight loss"]
 cohort[weight_change_relative < 0, "subset" := "weight loss"]
 cohort[, subset := factor(subset)]
 ```
