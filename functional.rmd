@@ -174,7 +174,7 @@ ggplot(sig, aes(x = bmi, y = reads)) +
     scale_y_log10() +
     stat_smooth(method="glm", aes(group = 1), col = "black") +
     facet_wrap(~ ko_term, scales = "free_y") + 
-    labs(x="BMI", y="normalized reads") + guides(color = F) +
+    labs(x="BMI", y="normalized reads") + guides(color = F)
 ggsave("figures/gene_bmi.png", dpi=300, width=12, height=10)
 
 ggplot(sig, aes(x = subset, y = reads, color=subset)) + 
@@ -182,7 +182,7 @@ ggplot(sig, aes(x = subset, y = reads, color=subset)) +
     scale_y_log10() +
     stat_summary(fun.y = "mean", geom = "point", pch=23, stroke = 1, size=3, fill = "white") +
     facet_wrap(~ ko_term, scales = "free_y") + 
-    labs(x="", y="normalized reads") + guides(color = F) +
+    labs(x="", y="normalized reads") + guides(color = F)
 ggsave("figures/gene_abundance.png", dpi=300, width=12, height=10)
 ```
 
@@ -224,4 +224,15 @@ perm <- adonis(mbtools::normalize(m) ~ age + sex + bmi + subset, data=as(sample_
 perm
 ```
 
-## 
+## Gene richness
+
+```{r}
+rich <- ps %>% rarefy_even_depth() %>% estimate_richness()
+rich[["vendor_observation_id"]] <- substr(rownames(rich), 2, 1e6)
+sdf <- sample_data(ps) %>% as("data.frame")
+sdf$vendor_observation_id <- as.character(sdf$vendor_observation_id)
+merged <- merge(rich, sdf, by="vendor_observation_id")
+
+mod <- glm(Observed ~ sex + age + bmi + subset, data=merged)
+summary(mod)
+```
